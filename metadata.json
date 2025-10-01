@@ -1,0 +1,5 @@
+{
+  "name": "Markup Tool Prototype",
+  "description": "An interactive tool to upload a blueprint image and highlight specific sections by drawing rectangles with a click-and-drag interface. Highlights are responsive to image size.",
+  "requestFramePermissions": []
+}
