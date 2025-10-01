@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Rectangle, RfiData } from './types';
-import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, AttachmentIcon } from './components/Icons';
+import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br';
@@ -699,10 +699,7 @@ const App: React.FC = () => {
                   <div className="mb-4">
                       <p className="block text-sm font-medium text-gray-300 mb-1">Attachments / Linked Items</p>
                       <div className="w-full bg-gray-700 border border-dashed border-gray-600 rounded-md p-4 text-center text-gray-400">
-                          <div className="flex items-center justify-center gap-2">
-                              <AttachmentIcon className="w-5 h-5" />
-                              <p>Attachments can be added after draft creation.</p>
-                          </div>
+                          <p>Attachments can be added after draft creation.</p>
                       </div>
                   </div>
                   <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-700">

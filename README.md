@@ -1,49 +1,20 @@
-# Blueprint Highlighter
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-A React-based tool for highlighting and annotating blueprints with RFI (Request for Information) capabilities.
+# Run and deploy your AI Studio app
 
-## Local Development Setup
+This contains everything you need to run your app locally.
 
-### Prerequisites
-- Node.js (version 18 or higher)
-- npm
+View your app in AI Studio: https://ai.studio/apps/drive/1v-U41jk8GaV52yEtaJqoZJT9ZfQa9-Y-
 
-### Getting Started
+## Run Locally
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+**Prerequisites:**  Node.js
 
-2. **Set up environment variables:**
-   - Copy the `.env` file and add your API keys
-   - Update `GEMINI_API_KEY` with your actual API key
 
-3. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
-   The app will be available at `http://localhost:3000`
-
-4. **Build for production:**
-   ```bash
-   npm run build
-   ```
-
-5. **Preview production build:**
-   ```bash
-   npm run preview
-   ```
-
-### Features
-- Upload and view blueprint images
-- Draw rectangles and shapes on blueprints
-- Create RFI (Request for Information) annotations
-- Zoom and pan functionality
-- Multiple tool selection (pen, shapes, arrows, text, etc.)
-
-### Development Notes
-- The app uses Vite for fast development and building
-- Tailwind CSS is loaded via CDN for styling
-- TypeScript is configured for type safety
-- The app is configured to run on port 3000
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
