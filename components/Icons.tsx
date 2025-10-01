@@ -17,8 +17,8 @@ export const TrashIcon: React.FC<IconProps> = ({ className }) => (
 );
 
 export const MousePointerIcon: React.FC<IconProps> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0-2.51-2.225.569-9.47 5.227 7.917-3.286 3.775z" />
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 17 17" fill="none" className={`relative top-[3px] ${className || ''}`.trim()}>
+      <path d="M6.76091 15.4535L1.02431 2.34129C0.659554 1.50755 1.50755 0.659554 2.34129 1.02431L15.4535 6.76091C16.3122 7.1366 16.2287 8.3811 15.3274 8.63859L10.6592 9.97238C10.327 10.0673 10.0673 10.327 9.97238 10.6592L8.63859 15.3274C8.3811 16.2287 7.1366 16.3122 6.76091 15.4535Z" stroke="currentColor"/>
     </svg>
 );
 
