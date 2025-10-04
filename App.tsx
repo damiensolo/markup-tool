@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Rectangle, RfiData } from './types';
-import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, AttachmentIcon } from './components/Icons';
+import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br';
@@ -20,6 +20,12 @@ interface InteractionState {
   initialTransform?: ViewTransform;
 }
 
+interface HoveredRfiInfo {
+  rectId: string;
+  rfiId: number;
+  position: { top: number; left: number };
+}
+
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
 
@@ -37,12 +43,15 @@ const App: React.FC = () => {
   const [viewTransform, setViewTransform] = useState<ViewTransform>({ scale: 1, translateX: 0, translateY: 0 });
   const [isRfiPanelOpen, setIsRfiPanelOpen] = useState(false);
   const [rfiTargetRectId, setRfiTargetRectId] = useState<string | null>(null);
+  const [rfiTargetRfiId, setRfiTargetRfiId] = useState<number | null>(null);
   const [rfiFormData, setRfiFormData] = useState({ title: '', type: 'General Inquiry', question: '' });
   const [isRfiEditMode, setIsRfiEditMode] = useState(false);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const [hoveredRfi, setHoveredRfi] = useState<HoveredRfiInfo | null>(null);
 
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hidePopupTimer = useRef<number | null>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -124,18 +133,24 @@ const App: React.FC = () => {
   const handleRfiCancel = useCallback(() => {
     setIsRfiPanelOpen(false);
     setRfiTargetRectId(null);
+    setRfiTargetRfiId(null);
     setRfiFormData({ title: '', type: 'General Inquiry', question: '' });
     setIsRfiEditMode(false);
   }, []);
   
-  const handleOpenRfiPanel = useCallback((rectId: string) => {
+  const handleOpenRfiPanel = useCallback((rectId: string, rfiId: number | null) => {
     const targetRect = rectangles.find(r => r.id === rectId);
     if (!targetRect) return;
     
-    if (targetRect.rfi) {
+    if (rfiId !== null) {
         // Editing existing RFI
-        setRfiFormData({title: targetRect.rfi.title, type: targetRect.rfi.type, question: targetRect.rfi.question});
-        setIsRfiEditMode(true);
+        const rfiToEdit = targetRect.rfi?.find(r => r.id === rfiId);
+        if (rfiToEdit) {
+            setRfiFormData({title: rfiToEdit.title, type: rfiToEdit.type, question: rfiToEdit.question});
+            setIsRfiEditMode(true);
+        } else {
+            return; // RFI not found
+        }
     } else {
         // Creating new RFI
         setRfiFormData({ title: '', type: 'General Inquiry', question: '' });
@@ -143,6 +158,7 @@ const App: React.FC = () => {
     }
     
     setRfiTargetRectId(rectId);
+    setRfiTargetRfiId(rfiId);
     setIsRfiPanelOpen(true);
     setLinkMenuRectId(null);
   }, [rectangles]);
@@ -401,7 +417,7 @@ const App: React.FC = () => {
   const handleSubmenuLink = (e: React.MouseEvent, type: string, id: string) => {
     e.stopPropagation();
     if (type === 'RFI') {
-      handleOpenRfiPanel(id);
+      handleOpenRfiPanel(id, null);
     } else {
       alert(`Linking ${type} for rectangle ${id}`);
       setLinkMenuRectId(null);
@@ -430,13 +446,26 @@ const App: React.FC = () => {
     setRectangles(prevRects =>
       prevRects.map(rect => {
         if (rect.id === rfiTargetRectId) {
-          const rfiData = isRfiEditMode
-            ? { ...rect.rfi!, ...rfiFormData } // Update existing RFI
-            : { // Create new RFI
-                id: prevRects.reduce((maxId, r) => r.rfi ? Math.max(maxId, r.rfi.id) : maxId, 0) + 1,
-                ...rfiFormData
-              };
-          return { ...rect, rfi: rfiData as RfiData };
+          const newRect = { ...rect };
+  
+          if (isRfiEditMode && rfiTargetRfiId !== null) {
+            // Update existing RFI
+            newRect.rfi = newRect.rfi?.map(rfi =>
+              rfi.id === rfiTargetRfiId ? { ...rfi, ...rfiFormData } : rfi
+            );
+          } else {
+            // Create new RFI and add to array
+            const newRfiId = (prevRects.flatMap(r => r.rfi || []).reduce((maxId, rfi) => Math.max(maxId, rfi.id), 0)) + 1;
+            const newRfiData: RfiData = {
+              id: newRfiId,
+              ...rfiFormData
+            };
+            if (!newRect.rfi) {
+              newRect.rfi = [];
+            }
+            newRect.rfi.push(newRfiData);
+          }
+          return newRect;
         }
         return rect;
       })
@@ -492,13 +521,14 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen bg-gray-900 text-white flex flex-col items-stretch p-4 overflow-hidden">
+      {/* Moved file input here to persist it across renders */}
+      <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" ref={fileInputRef} />
       <main className="w-full flex-grow flex flex-col items-center bg-gray-800 rounded-2xl shadow-2xl shadow-cyan-500/10 p-2">
         {!imageSrc ? (
           <div className="flex flex-col items-center justify-center h-full w-full border-4 border-dashed border-gray-600 rounded-xl p-8 text-center">
             <UploadIcon className="w-24 h-24 text-gray-500 mb-4" />
             <h2 className="text-2xl font-semibold mb-2">Upload Your Blueprint</h2>
             <p className="text-gray-400 mb-6 max-w-md">Select an image file to start highlighting.</p>
-            <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" ref={fileInputRef} />
             <button
               onClick={triggerFileUpload}
               className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
@@ -636,26 +666,42 @@ const App: React.FC = () => {
                     if (!rect.rfi) return null;
                     const screenRect = getScreenRect(rect);
                     if (!screenRect) return null;
-                    return (
+                    return rect.rfi.map((rfi, index) => (
                         <div
-                            key={`rfi-label-${rect.id}`}
+                            key={`rfi-label-${rect.id}-${rfi.id}`}
                             className="absolute bg-blue-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-sm shadow-md cursor-pointer hover:bg-blue-500 transition-colors"
                             style={{
-                                left: `${screenRect.left + screenRect.width}px`,
-                                top: `${screenRect.top}px`,
-                                transform: 'translate(-50%, -50%)',
+                                left: `${screenRect.left + screenRect.width + 5}px`,
+                                top: `${screenRect.top + index * 24}px`,
                                 pointerEvents: 'auto',
                                 zIndex: 25
                             }}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                handleOpenRfiPanel(rect.id);
+                                handleOpenRfiPanel(rect.id, rfi.id);
+                            }}
+                            onMouseEnter={(e) => {
+                                if (hidePopupTimer.current) {
+                                    clearTimeout(hidePopupTimer.current);
+                                }
+                                const tagRect = e.currentTarget.getBoundingClientRect();
+                                setHoveredRfi({
+                                    rectId: rect.id,
+                                    rfiId: rfi.id,
+                                    position: { top: tagRect.top + tagRect.height / 2, left: tagRect.right }
+                                });
+                            }}
+                            onMouseLeave={() => {
+                                hidePopupTimer.current = window.setTimeout(() => {
+                                    setHoveredRfi(null);
+                                }, 300);
                             }}
                         >
-                            RFI-{rect.rfi.id}
+                            RFI-{rfi.id}
                         </div>
-                    );
+                    ));
                 })}
+                
 
                 {/* Zoom Controls */}
                 <div className="absolute bottom-4 right-4 flex flex-col gap-2 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg">
@@ -668,6 +714,47 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* RFI Hover Popup */}
+      {hoveredRfi && (() => {
+          const rect = rectangles.find(r => r.id === hoveredRfi.rectId);
+          const rfi = rect?.rfi?.find(r => r.id === hoveredRfi.rfiId);
+          if (!rfi) return null;
+  
+          return (
+              <div
+                  className="absolute bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-xl z-[60] w-64"
+                  style={{
+                      top: `${hoveredRfi.position.top}px`,
+                      left: `${hoveredRfi.position.left + 10}px`,
+                      transform: 'translateY(-50%)'
+                  }}
+                  onMouseEnter={() => {
+                      if (hidePopupTimer.current) {
+                          clearTimeout(hidePopupTimer.current);
+                      }
+                  }}
+                  onMouseLeave={() => {
+                      setHoveredRfi(null);
+                  }}
+              >
+                  <h4 className="font-bold text-cyan-400 mb-2 truncate">RFI-{rfi.id}: {rfi.title}</h4>
+                  <p className="text-sm text-gray-300 mb-1"><span className="font-semibold text-gray-400">Type:</span> {rfi.type}</p>
+                  <div className="text-sm text-gray-300 mb-3 max-h-24 overflow-y-auto">
+                      <span className="font-semibold text-gray-400">Question:</span>
+                      <p className="whitespace-pre-wrap break-words">{rfi.question}</p>
+                  </div>
+                  <a
+                      href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/rfi/uiSFtnkKXNpn5Koz/details?tab=details"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold"
+                  >
+                      View Full RFI &rarr;
+                  </a>
+              </div>
+          );
+      })()}
       
       {/* RFI Side Panel */}
       <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isRfiPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -699,10 +786,7 @@ const App: React.FC = () => {
                   <div className="mb-4">
                       <p className="block text-sm font-medium text-gray-300 mb-1">Attachments / Linked Items</p>
                       <div className="w-full bg-gray-700 border border-dashed border-gray-600 rounded-md p-4 text-center text-gray-400">
-                          <div className="flex items-center justify-center gap-2">
-                              <AttachmentIcon className="w-5 h-5" />
-                              <p>Attachments can be added after draft creation.</p>
-                          </div>
+                          <p>Attachments can be added after draft creation.</p>
                       </div>
                   </div>
                   <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-700">

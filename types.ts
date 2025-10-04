@@ -18,5 +18,5 @@ export interface Rectangle {
   y: number;
   width: number;
   height: number;
-  rfi?: RfiData;
+  rfi?: RfiData[];
 }
