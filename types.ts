@@ -37,6 +37,30 @@ export interface DrawingData {
   thumbnailUrl: string;
 }
 
+/**
+ * Represents a markup annotation on a linked photo.
+ * Values are percentages (0-100) relative to the photo's dimensions.
+ */
+export interface PhotoMarkup {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+
+/**
+ * Represents Photo data linked to a rectangle.
+ */
+export interface PhotoData {
+  id: string;
+  title: string;
+  url: string;
+  source: 'linarc' | 'upload';
+  markups?: PhotoMarkup[];
+}
+
 
 /**
  * Represents a rectangle highlight on the blueprint.
@@ -52,4 +76,5 @@ export interface Rectangle {
   submittals?: SubmittalData[];
   punches?: PunchData[];
   drawings?: DrawingData[];
+  photos?: PhotoData[];
 }

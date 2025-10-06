@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData } from './types';
+import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData, PhotoData, PhotoMarkup } from './types';
 import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
@@ -21,14 +21,14 @@ interface InteractionState {
 }
 
 interface HoveredItemInfo {
-  type: 'rfi' | 'submittal' | 'punch' | 'drawing';
+  type: 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo';
   rectId: string;
   itemId: number | string;
   position: { top: number; left: number };
 }
 
 interface LinkModalConfig {
-    type: 'rfi' | 'submittal' | 'punch' | 'drawing';
+    type: 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo';
     title: string;
     items: any[];
     displayFields: { key: string; label?: string }[];
@@ -55,9 +55,15 @@ const mockPunches: PunchData[] = [
 ];
 
 const mockDrawings: DrawingData[] = [
-    { id: 'A-3.2', title: 'Floor Plan - Level 3', thumbnailUrl: 'https://images.pexels.com/photos/1105766/pexels-photo-1105766.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' },
-    { id: 'E-1.1', title: 'Electrical Schematic - Panel A', thumbnailUrl: 'https://images.pexels.com/photos/271795/pexels-photo-271795.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' },
-    { id: 'M-5.0', title: 'Mechanical HVAC Details', thumbnailUrl: 'https://images.pexels.com/photos/259962/pexels-photo-259962.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' },
+    { id: 'A-2.1', title: 'Architectural Floor Plan - Level 2', thumbnailUrl: 'https://i.imgur.com/gZ3J4f3.png' },
+    { id: 'S-5.0', title: 'Structural Details - Column Connections', thumbnailUrl: 'https://i.imgur.com/K81f2i2.png' },
+    { id: 'A-5.1', title: 'Building Section A-A', thumbnailUrl: 'https://i.imgur.com/I7eA7kR.png' },
+];
+
+const mockPhotos: PhotoData[] = [
+    { id: 'PHOTO-01', title: 'Site Condition - West Wing', url: 'https://images.pexels.com/photos/1115804/pexels-photo-1115804.jpeg?auto=compress&cs=tinysrgb&w=600', source: 'linarc' },
+    { id: 'PHOTO-02', title: 'Pre-pour inspection formwork', url: 'https://images.pexels.com/photos/302804/pexels-photo-302804.jpeg?auto=compress&cs=tinysrgb&w=600', source: 'linarc' },
+    { id: 'PHOTO-03', title: 'HVAC Ducting - 3rd Floor', url: 'https://images.pexels.com/photos/834892/pexels-photo-834892.jpeg?auto=compress&cs=tinysrgb&w=600', source: 'linarc' },
 ];
 
 const App: React.FC = () => {
@@ -85,9 +91,13 @@ const App: React.FC = () => {
   const [linkModalConfig, setLinkModalConfig] = useState<LinkModalConfig | null>(null);
   const [linkTargetRectId, setLinkTargetRectId] = useState<string | null>(null);
   const [openLinkSubmenu, setOpenLinkSubmenu] = useState<string | null>(null);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [photoViewerConfig, setPhotoViewerConfig] = useState<{ rectId: string; photoId: string } | null>(null);
+
 
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoFileInputRef = useRef<HTMLInputElement>(null);
   const hidePopupTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -522,6 +532,16 @@ const App: React.FC = () => {
             });
             setIsLinkModalOpen(true);
             break;
+        case 'Link Photo':
+            setLinkModalConfig({
+                type: 'photo',
+                title: 'Link a Photo',
+                items: mockPhotos,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title'],
+            });
+            setIsLinkModalOpen(true);
+            break;
         default:
             alert(`Linking ${type} for rectangle ${rectId}`);
             break;
@@ -553,6 +573,10 @@ const App: React.FC = () => {
                 case 'drawing':
                     if (!newRect.drawings) newRect.drawings = [];
                     if (!newRect.drawings.some(d => d.id === item.id)) newRect.drawings.push(item);
+                    break;
+                case 'photo':
+                    if (!newRect.photos) newRect.photos = [];
+                    if (!newRect.photos.some(p => p.id === item.id)) newRect.photos.push(item);
                     break;
             }
             return newRect;
@@ -614,6 +638,61 @@ const App: React.FC = () => {
     handleRfiCancel();
   };
   
+  const handlePhotoUploadRequest = () => {
+    photoFileInputRef.current?.click();
+  };
+  
+  const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file && file.type.startsWith('image/') && linkTargetRectId) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const newPhoto: PhotoData = {
+              id: `UPLOAD-${Date.now()}`,
+              title: file.name,
+              url: e.target?.result as string,
+              source: 'upload',
+              markups: [],
+          };
+          
+          setRectangles(prevRects => prevRects.map(rect => {
+              if (rect.id === linkTargetRectId) {
+                  const newRect = {...rect};
+                  if (!newRect.photos) newRect.photos = [];
+                  newRect.photos.push(newPhoto);
+                  return newRect;
+              }
+              return rect;
+          }));
+  
+          setIsLinkModalOpen(false);
+          setLinkModalConfig(null);
+          setLinkTargetRectId(null);
+        };
+        reader.readAsDataURL(file);
+        event.target.value = ''; // Allows re-uploading the same file
+      }
+  };
+
+  const handleUpdatePhotoMarkups = (newMarkups: PhotoMarkup[]) => {
+    if (!photoViewerConfig) return;
+    const { rectId, photoId } = photoViewerConfig;
+
+    setRectangles(prevRects => prevRects.map(rect => {
+        if (rect.id === rectId) {
+            const newRect = {...rect};
+            newRect.photos = newRect.photos?.map(photo => {
+                if (photo.id === photoId) {
+                    return {...photo, markups: newMarkups};
+                }
+                return photo;
+            });
+            return newRect;
+        }
+        return rect;
+    }));
+  };
+
   useEffect(() => {
     // Hide menu first to allow animation to replay on selection change
     setIsMenuVisible(false);
@@ -654,6 +733,9 @@ const App: React.FC = () => {
   const isMultiSelection = selectedRectIds.length > 1;
   const selectedRectangle = isSingleSelection ? rectangles.find(r => r.id === selectedRectIds[0]) : null;
   const lastSelectedRectangle = isMultiSelection ? rectangles.find(r => r.id === selectedRectIds[selectedRectIds.length - 1]) : null;
+  const currentPhotoForViewer = photoViewerConfig ? 
+    rectangles.find(r => r.id === photoViewerConfig.rectId)?.photos?.find(p => p.id === photoViewerConfig.photoId)
+    : null;
   
   let singleSelectionScreenRect = selectedRectangle ? getScreenRect(selectedRectangle) : null;
   let multiSelectionScreenRect = lastSelectedRectangle ? getScreenRect(lastSelectedRectangle) : null;
@@ -662,8 +744,8 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white flex flex-col items-stretch p-4 overflow-hidden">
-      {/* Moved file input here to persist it across renders */}
       <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" ref={fileInputRef} />
+      <input type="file" accept="image/*" onChange={handlePhotoFileChange} className="hidden" ref={photoFileInputRef} />
       <main className="w-full flex-grow flex flex-col items-center bg-white dark:bg-gray-800 rounded-2xl shadow-2xl shadow-cyan-500/10 p-2">
         {!imageSrc ? (
           <div className="flex flex-col items-center justify-center h-full w-full border-4 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center">
@@ -792,7 +874,7 @@ const App: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        {['Link Submittal', 'Link Punch', 'Link Drawing'].map(type => (
+                                        {['Link Submittal', 'Link Punch', 'Link Drawing', 'Link Photo'].map(type => (
                                             <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left">{type}</button>
                                         ))}
                                     </div>
@@ -837,12 +919,13 @@ const App: React.FC = () => {
                     if (!screenRect) return null;
                     let tagCount = 0;
 
-                    const renderTag = (type: 'rfi' | 'submittal' | 'punch' | 'drawing', item: any, text: string) => {
+                    const renderTag = (type: 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo', item: any, text: string) => {
                         const tagColorClasses = {
-                            rfi: 'bg-blue-600 hover:bg-blue-500',
-                            submittal: 'bg-green-600 hover:bg-green-500',
-                            punch: 'bg-orange-600 hover:bg-orange-500',
-                            drawing: 'bg-indigo-600 hover:bg-indigo-500',
+                            rfi: 'bg-blue-600/85 hover:bg-blue-500/85',
+                            submittal: 'bg-green-600/85 hover:bg-green-500/85',
+                            punch: 'bg-orange-600/85 hover:bg-orange-500/85',
+                            drawing: 'bg-indigo-600/85 hover:bg-indigo-500/85',
+                            photo: 'bg-yellow-600/85 hover:bg-yellow-500/85',
                         };
                         const positionIndex = tagCount;
                         tagCount++;
@@ -860,6 +943,10 @@ const App: React.FC = () => {
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     if(type === 'rfi') handleOpenRfiPanel(rect.id, item.id);
+                                    if(type === 'photo') {
+                                        setPhotoViewerConfig({ rectId: rect.id, photoId: item.id });
+                                        setIsPhotoViewerOpen(true);
+                                    }
                                 }}
                                 onMouseEnter={(e) => {
                                     if (hidePopupTimer.current) clearTimeout(hidePopupTimer.current);
@@ -886,6 +973,7 @@ const App: React.FC = () => {
                             {rect.submittals?.map(sub => renderTag('submittal', sub, sub.id))}
                             {rect.punches?.map(punch => renderTag('punch', punch, punch.id))}
                             {rect.drawings?.map(drawing => renderTag('drawing', drawing, drawing.id))}
+                            {rect.photos?.map(photo => renderTag('photo', photo, photo.id))}
                         </React.Fragment>
                     );
                 })}
@@ -956,6 +1044,26 @@ const App: React.FC = () => {
                         </>
                     );
                     break;
+                case 'photo':
+                    const photo = rect.photos?.find(p => p.id === hoveredItem.itemId);
+                    if (photo) content = (
+                        <>
+                            <h4 className="font-bold text-yellow-400 mb-2 truncate">{photo.id}: {photo.title}</h4>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPhotoViewerConfig({ rectId: rect.id, photoId: photo.id });
+                                    setIsPhotoViewerOpen(true);
+                                    setHoveredItem(null); // Close the popup
+                                }}
+                                className="rounded-md mb-3 w-full h-32 block hover:opacity-80 transition-opacity cursor-pointer"
+                            >
+                                <img src={photo.url} alt={photo.title} className="w-full h-full object-cover rounded-md" />
+                            </button>
+                            <p className="text-sm text-gray-400">Click tag or thumbnail to view & annotate.</p>
+                        </>
+                    );
+                    break;
             }
         }
     
@@ -982,8 +1090,16 @@ const App: React.FC = () => {
         config={linkModalConfig}
         onClose={() => setIsLinkModalOpen(false)}
         onSelect={handleSelectLinkItem}
+        onUploadRequest={handlePhotoUploadRequest}
       />
       
+      <PhotoViewerModal
+        isOpen={isPhotoViewerOpen}
+        photoData={currentPhotoForViewer || null}
+        onClose={() => setIsPhotoViewerOpen(false)}
+        onUpdateMarkups={handleUpdatePhotoMarkups}
+      />
+
       {/* RFI Side Panel */}
       <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isRfiPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-6 flex flex-col h-full">
@@ -1033,9 +1149,10 @@ interface LinkModalProps {
     config: LinkModalConfig | null;
     onClose: () => void;
     onSelect: (item: any) => void;
+    onUploadRequest: () => void;
 }
 
-const LinkModal: React.FC<LinkModalProps> = ({ isOpen, config, onClose, onSelect }) => {
+const LinkModal: React.FC<LinkModalProps> = ({ isOpen, config, onClose, onSelect, onUploadRequest }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
@@ -1090,9 +1207,167 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, config, onClose, onSelect
                         <li className="p-4 text-center text-gray-500 dark:text-gray-400">No items found.</li>
                     )}
                 </ul>
+                {config.type === 'photo' && (
+                    <div className="p-4 border-t border-gray-200 dark:border-gray-700 text-center">
+                        <button 
+                            onClick={onUploadRequest}
+                            className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2 mx-auto"
+                        >
+                            <UploadIcon className="w-5 h-5" />
+                            Upload from Computer
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
 };
+
+interface PhotoViewerModalProps {
+    isOpen: boolean;
+    photoData: PhotoData | null;
+    onClose: () => void;
+    onUpdateMarkups: (newMarkups: PhotoMarkup[]) => void;
+}
+
+const PhotoViewerModal: React.FC<PhotoViewerModalProps> = ({ isOpen, photoData, onClose, onUpdateMarkups }) => {
+    const [markups, setMarkups] = useState<PhotoMarkup[]>([]);
+    const [currentMarkup, setCurrentMarkup] = useState<Omit<PhotoMarkup, 'id'> | null>(null);
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
+    const photoContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (photoData) {
+            setMarkups(photoData.markups || []);
+        }
+    }, [photoData]);
+
+    if (!isOpen || !photoData) return null;
+    
+    const getRelativeCoords = (event: React.MouseEvent): { x: number; y: number } | null => {
+        if (!photoContainerRef.current) return null;
+        const rect = photoContainerRef.current.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width) * 100;
+        const y = ((event.clientY - rect.top) / rect.height) * 100;
+        return { x, y };
+    };
+
+    const normalizeMarkup = (markup: Omit<PhotoMarkup, 'id'>): Omit<PhotoMarkup, 'id'> => {
+        const newMarkup = { ...markup };
+        if (newMarkup.width < 0) {
+            newMarkup.x = newMarkup.x + newMarkup.width;
+            newMarkup.width = Math.abs(newMarkup.width);
+        }
+        if (newMarkup.height < 0) {
+            newMarkup.y = newMarkup.y + newMarkup.height;
+            newMarkup.height = Math.abs(newMarkup.height);
+        }
+        return newMarkup;
+    };
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button !== 0) return;
+        const coords = getRelativeCoords(e);
+        if (!coords) return;
+        setIsDrawing(true);
+        setStartPoint(coords);
+        setCurrentMarkup({ x: coords.x, y: coords.y, width: 0, height: 0 });
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isDrawing || !startPoint) return;
+        const coords = getRelativeCoords(e);
+        if (!coords) return;
+        setCurrentMarkup({
+            x: startPoint.x,
+            y: startPoint.y,
+            width: coords.x - startPoint.x,
+            height: coords.y - startPoint.y,
+        });
+    };
+
+    const handleMouseUp = () => {
+        if (!currentMarkup || !isDrawing) return;
+        const normalized = normalizeMarkup(currentMarkup);
+        if (normalized.width > 1 && normalized.height > 1) {
+            const newMarkup = { ...normalized, id: Date.now().toString() };
+            const newMarkups = [...markups, newMarkup];
+            setMarkups(newMarkups);
+            onUpdateMarkups(newMarkups);
+        }
+        setIsDrawing(false);
+        setCurrentMarkup(null);
+        setStartPoint(null);
+    };
+    
+    const handleDeleteMarkup = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        const newMarkups = markups.filter(m => m.id !== id);
+        setMarkups(newMarkups);
+        onUpdateMarkups(newMarkups);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-[110] flex items-center justify-center p-4" onClick={onClose}>
+            <div 
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl flex flex-col relative" 
+                onClick={e => e.stopPropagation()}
+                style={{height: '90vh'}}
+            >
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">{photoData.title}</h3>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                        <XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" />
+                    </button>
+                </div>
+                <div className="flex-grow p-4 overflow-hidden flex items-center justify-center">
+                    <div
+                        ref={photoContainerRef}
+                        className="relative w-full h-full cursor-crosshair"
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                    >
+                        <img src={photoData.url} alt={photoData.title} className="w-full h-full object-contain pointer-events-none select-none" />
+                        
+                        {markups.map(markup => (
+                             <div 
+                                key={markup.id} 
+                                className="absolute border-2 border-red-500 bg-red-500/20 group"
+                                style={{
+                                    left: `${markup.x}%`,
+                                    top: `${markup.y}%`,
+                                    width: `${markup.width}%`,
+                                    height: `${markup.height}%`,
+                                }}
+                             >
+                                <button 
+                                    onClick={(e) => handleDeleteMarkup(e, markup.id)}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                >
+                                    <XMarkIcon className="w-4 h-4" />
+                                </button>
+                             </div>
+                        ))}
+
+                        {currentMarkup && (
+                            <div 
+                                className="absolute border-2 border-dashed border-red-400 bg-red-400/20 pointer-events-none"
+                                style={{
+                                    left: `${normalizeMarkup(currentMarkup).x}%`,
+                                    top: `${normalizeMarkup(currentMarkup).y}%`,
+                                    width: `${normalizeMarkup(currentMarkup).width}%`,
+                                    height: `${normalizeMarkup(currentMarkup).height}%`,
+                                }}
+                             />
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export default App;
