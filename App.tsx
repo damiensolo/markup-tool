@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData, PhotoData, PhotoMarkup } from './types';
-import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon } from './components/Icons';
+import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData, PhotoData, PhotoMarkup, Pin, SafetyIssueData } from './types';
+import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon, SafetyPinIcon, PunchPinIcon, PhotoPinIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br';
-type ActiveTool = 'select' | 'shape' | 'pen' | 'arrow' | 'text' | 'distance' | 'drawing' | 'issue';
+type ActiveTool = 'select' | 'shape' | 'pen' | 'arrow' | 'text' | 'distance' | 'drawing' | 'pin';
+type ActivePinType = 'photo' | 'safety' | 'punch';
 
 interface ViewTransform {
   scale: number;
@@ -21,10 +22,11 @@ interface InteractionState {
 }
 
 interface HoveredItemInfo {
-  type: 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo';
-  rectId: string;
+  type: 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo' | 'pin';
+  rectId?: string;
   itemId: number | string;
   position: { top: number; left: number };
+  pin?: Pin;
 }
 
 interface LinkModalConfig {
@@ -49,7 +51,7 @@ const mockSubmittals: SubmittalData[] = [
 const mockPunches: PunchData[] = [
     { id: 'PUNCH-101', title: 'Drywall crack in Corridor A', status: 'Open', assignee: 'John Doe' },
     { id: 'PUNCH-102', title: 'Incorrect paint color in Room 203', status: 'Ready for Review', assignee: 'Jane Smith' },
-    { id: 'PUNCH-103', title: 'Missing light fixture in Lobby', status: 'Closed', assignee: 'John Doe' },
+    { id: 'PUNCH-103', 'title': 'Missing light fixture in Lobby', status: 'Closed', assignee: 'John Doe' },
     { id: 'PUNCH-104', title: 'Leaky faucet in Restroom 1B', status: 'Open', assignee: 'Mike Ross' },
     { id: 'PUNCH-105', title: 'Damaged floor tile near entrance', status: 'Ready for Review', assignee: 'Jane Smith' },
 ];
@@ -66,9 +68,19 @@ const mockPhotos: PhotoData[] = [
     { id: 'PHOTO-03', title: 'HVAC Ducting - 3rd Floor', url: 'https://images.pexels.com/photos/834892/pexels-photo-834892.jpeg?auto=compress&cs=tinysrgb&w=600', source: 'linarc' },
 ];
 
+const mockSafetyIssues: SafetyIssueData[] = [
+    { id: 'SAFE-001', title: 'Uncovered floor opening', status: 'Open', severity: 'High' },
+    { id: 'SAFE-002', title: 'Missing guardrail on 2nd floor', status: 'In Progress', severity: 'High' },
+    { id: 'SAFE-003', title: 'Improperly stored flammable materials', status: 'Closed', severity: 'Medium' },
+];
+
 const App: React.FC = () => {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [rectangles, setRectangles] = useState<Rectangle[]>([]);
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [allPhotos, setAllPhotos] = useState<PhotoData[]>(mockPhotos);
+  const [allPunches, setAllPunches] = useState<PunchData[]>(mockPunches);
+  const [allSafetyIssues, setAllSafetyIssues] = useState<SafetyIssueData[]>(mockSafetyIssues);
   const [selectedRectIds, setSelectedRectIds] = useState<string[]>([]);
   const [hoveredRectId, setHoveredRectId] = useState<string | null>(null);
   const [linkMenuRectId, setLinkMenuRectId] = useState<string | null>(null);
@@ -77,12 +89,26 @@ const App: React.FC = () => {
   const [interaction, setInteraction] = useState<InteractionState>({ type: 'none' });
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
   const [activeShape, setActiveShape] = useState<'cloud' | 'box' | 'ellipse'>('box');
+  const [activePinType, setActivePinType] = useState<ActivePinType>('photo');
   const [viewTransform, setViewTransform] = useState<ViewTransform>({ scale: 1, translateX: 0, translateY: 0 });
+  const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
+  
   const [isRfiPanelOpen, setIsRfiPanelOpen] = useState(false);
   const [rfiTargetRectId, setRfiTargetRectId] = useState<string | null>(null);
   const [rfiTargetRfiId, setRfiTargetRfiId] = useState<number | null>(null);
   const [rfiFormData, setRfiFormData] = useState({ title: '', type: 'General Inquiry', question: '' });
   const [isRfiEditMode, setIsRfiEditMode] = useState(false);
+
+  const [isSafetyPanelOpen, setIsSafetyPanelOpen] = useState(false);
+  const [safetyTargetPinId, setSafetyTargetPinId] = useState<string | null>(null);
+  const [safetyFormData, setSafetyFormData] = useState<Omit<SafetyIssueData, 'id'>>({ title: '', status: 'Open', severity: 'Medium' });
+
+  const [isPunchPanelOpen, setIsPunchPanelOpen] = useState(false);
+  const [punchTargetPinId, setPunchTargetPinId] = useState<string | null>(null);
+  const [punchFormData, setPunchFormData] = useState<Omit<PunchData, 'id'>>({ title: '', status: 'Open', assignee: '' });
+  const [punchPanelMode, setPunchPanelMode] = useState<'create' | 'link'>('create');
+  const [punchSearchTerm, setPunchSearchTerm] = useState('');
+  
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<HoveredItemInfo | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -90,15 +116,18 @@ const App: React.FC = () => {
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkModalConfig, setLinkModalConfig] = useState<LinkModalConfig | null>(null);
   const [linkTargetRectId, setLinkTargetRectId] = useState<string | null>(null);
+  const [pinTargetCoords, setPinTargetCoords] = useState<{x: number, y: number} | null>(null);
   const [openLinkSubmenu, setOpenLinkSubmenu] = useState<string | null>(null);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [photoViewerConfig, setPhotoViewerConfig] = useState<{ rectId: string; photoId: string } | null>(null);
+  const [photoViewerConfig, setPhotoViewerConfig] = useState<{ rectId?: string; photoId: string, pinId?: string } | null>(null);
 
 
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoFileInputRef = useRef<HTMLInputElement>(null);
   const hidePopupTimer = useRef<number | null>(null);
+  const mouseDownRef = useRef<{x: number, y: number} | null>(null);
+
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
@@ -128,6 +157,7 @@ const App: React.FC = () => {
       reader.onload = (e) => {
         // Reset state for new image
         setRectangles([]);
+        setPins([]);
         setSelectedRectIds([]);
         setHoveredRectId(null);
         setLinkMenuRectId(null);
@@ -143,7 +173,7 @@ const App: React.FC = () => {
     }
   };
 
-  const getRelativeCoords = useCallback((event: React.MouseEvent | WheelEvent): { x: number; y: number } | null => {
+  const getRelativeCoords = useCallback((event: React.MouseEvent | WheelEvent | MouseEvent): { x: number; y: number } | null => {
     if (!imageContainerRef.current) return null;
     const rect = imageContainerRef.current.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
@@ -156,6 +186,19 @@ const App: React.FC = () => {
     const y = (imageY / rect.height) * 100;
 
     return { x, y };
+  }, [viewTransform]);
+  
+  const getScreenPoint = useCallback((x: number, y: number): { left: number; top: number } | null => {
+    if (!imageContainerRef.current) return null;
+    const containerRect = imageContainerRef.current.getBoundingClientRect();
+
+    const pixelX = (x / 100) * containerRect.width;
+    const pixelY = (y / 100) * containerRect.height;
+    
+    return {
+      left: pixelX * viewTransform.scale + viewTransform.translateX,
+      top: pixelY * viewTransform.scale + viewTransform.translateY,
+    };
   }, [viewTransform]);
 
   const getScreenRect = useCallback((rect: Omit<Rectangle, 'id'> | Rectangle): { left: number; top: number; width: number; height: number; } => {
@@ -231,8 +274,79 @@ const App: React.FC = () => {
     setLinkMenuRectId(null);
   }, [rectangles]);
 
+  const handleSubmenuLink = useCallback((e: React.MouseEvent, type: string, targetId: string | null) => {
+    e.stopPropagation();
+    setLinkMenuRectId(null);
+    if(targetId !== 'pin') {
+        setLinkTargetRectId(targetId);
+    } else {
+        setLinkTargetRectId(null);
+    }
+
+    switch (type) {
+        case 'New RFI':
+            if (targetId) handleOpenRfiPanel(targetId, null);
+            break;
+        case 'Link RFI':
+            const allRfis = rectangles.flatMap(r => r.rfi ? r.rfi.map(rfi => ({...rfi, id: rfi.id, title: `RFI-${rfi.id}: ${rfi.title}`})) : []);
+            setLinkModalConfig({
+                type: 'rfi',
+                title: 'Link to an Existing RFI',
+                items: allRfis,
+                displayFields: [{ key: 'title' }],
+                searchFields: ['title', 'question'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Submittal':
+            setLinkModalConfig({
+                type: 'submittal',
+                title: 'Link to a Submittal',
+                items: mockSubmittals,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title', 'specSection'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Punch':
+            setLinkModalConfig({
+                type: 'punch',
+                title: 'Link to a Punch List Item',
+                items: allPunches,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title', 'assignee'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Drawing':
+            setLinkModalConfig({
+                type: 'drawing',
+                title: 'Link to a Drawing',
+                items: mockDrawings,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Photo':
+            setLinkModalConfig({
+                type: 'photo',
+                title: 'Link a Photo',
+                items: allPhotos,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        default:
+            alert(`Linking ${type} for rectangle ${targetId}`);
+            break;
+    }
+  }, [rectangles, allPhotos, allPunches, handleOpenRfiPanel]);
+
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (interaction.type !== 'none') return;
+    mouseDownRef.current = { x: event.clientX, y: event.clientY };
+    if (interaction.type !== 'none' || draggingPinId) return;
     
     if (event.button === 1) { 
         event.preventDefault();
@@ -294,10 +408,18 @@ const App: React.FC = () => {
         setCurrentRect({ x: coords.x, y: coords.y, width: 0, height: 0 });
       }
     }
-  }, [getRelativeCoords, interaction.type, rectangles, activeTool, selectedRectIds, viewTransform, isRfiPanelOpen, handleRfiCancel]);
+  }, [getRelativeCoords, interaction.type, rectangles, activeTool, selectedRectIds, viewTransform, isRfiPanelOpen, handleRfiCancel, draggingPinId]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const coords = getRelativeCoords(event);
+
+    if (draggingPinId && coords) {
+      setPins(prevPins => prevPins.map(p => 
+        p.id === draggingPinId ? { ...p, x: coords.x, y: coords.y } : p
+      ));
+      return;
+    }
+
     if (!coords && interaction.type !== 'panning') return;
 
     if (interaction.type === 'none' && (activeTool === 'select' || activeTool === 'shape') && coords) {
@@ -375,9 +497,43 @@ const App: React.FC = () => {
         break;
       }
     }
-  }, [getRelativeCoords, interaction, activeTool, rectangles]);
+  }, [getRelativeCoords, interaction, activeTool, rectangles, draggingPinId]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const startPoint = mouseDownRef.current;
+    mouseDownRef.current = null;
+    const isClick = startPoint && Math.abs(event.clientX - startPoint.x) < 5 && Math.abs(event.clientY - startPoint.y) < 5;
+
+    if (draggingPinId) {
+      setDraggingPinId(null);
+    }
+    
+    if (activeTool === 'pin' && isClick && interaction.type === 'none') {
+        const coords = getRelativeCoords(event);
+        if (!coords) return;
+        setPinTargetCoords(coords);
+        
+        switch (activePinType) {
+            case 'photo':
+                setLinkTargetRectId(null);
+                handleSubmenuLink(event, 'Link Photo', 'pin');
+                break;
+            case 'safety':
+                setSafetyTargetPinId(null);
+                setSafetyFormData({ title: '', status: 'Open', severity: 'Medium' });
+                setIsSafetyPanelOpen(true);
+                break;
+            case 'punch':
+                setPunchTargetPinId(null);
+                setPunchFormData({ title: '', status: 'Open', assignee: ''});
+                setPunchPanelMode('create');
+                setIsPunchPanelOpen(true);
+                break;
+        }
+        setInteraction({ type: 'none' });
+        return;
+    }
+
     if (interaction.type === 'none') return;
   
     if (interaction.type === 'drawing' && currentRect) {
@@ -408,15 +564,15 @@ const App: React.FC = () => {
     setInteraction({ type: 'none' });
     setCurrentRect(null);
     setMarqueeRect(null);
-  }, [interaction, currentRect, marqueeRect, rectangles]);
+  }, [interaction, currentRect, marqueeRect, rectangles, activeTool, activePinType, getRelativeCoords, handleSubmenuLink, draggingPinId]);
   
 
   const handleMouseLeave = useCallback(() => {
     setHoveredRectId(null);
-    if (interaction.type !== 'none') {
-      handleMouseUp();
+    if (interaction.type !== 'none' || draggingPinId) {
+      handleMouseUp({} as React.MouseEvent<HTMLDivElement>);
     }
-  }, [interaction.type, handleMouseUp]);
+  }, [interaction.type, handleMouseUp, draggingPinId]);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -482,107 +638,52 @@ const App: React.FC = () => {
     setLinkMenuRectId(null);
   };
 
-  const handleSubmenuLink = (e: React.MouseEvent, type: string, rectId: string) => {
-    e.stopPropagation();
-    setLinkTargetRectId(rectId);
-    setLinkMenuRectId(null);
-
-    switch (type) {
-        case 'New RFI':
-            handleOpenRfiPanel(rectId, null);
-            break;
-        case 'Link RFI':
-            const allRfis = rectangles.flatMap(r => r.rfi ? r.rfi.map(rfi => ({...rfi, id: rfi.id, title: `RFI-${rfi.id}: ${rfi.title}`})) : []);
-            setLinkModalConfig({
-                type: 'rfi',
-                title: 'Link to an Existing RFI',
-                items: allRfis,
-                displayFields: [{ key: 'title' }],
-                searchFields: ['title', 'question'],
-            });
-            setIsLinkModalOpen(true);
-            break;
-        case 'Link Submittal':
-            setLinkModalConfig({
-                type: 'submittal',
-                title: 'Link to a Submittal',
-                items: mockSubmittals,
-                displayFields: [{ key: 'id' }, { key: 'title' }],
-                searchFields: ['id', 'title', 'specSection'],
-            });
-            setIsLinkModalOpen(true);
-            break;
-        case 'Link Punch':
-            setLinkModalConfig({
-                type: 'punch',
-                title: 'Link to a Punch List Item',
-                items: mockPunches,
-                displayFields: [{ key: 'id' }, { key: 'title' }],
-                searchFields: ['id', 'title', 'assignee'],
-            });
-            setIsLinkModalOpen(true);
-            break;
-        case 'Link Drawing':
-            setLinkModalConfig({
-                type: 'drawing',
-                title: 'Link to a Drawing',
-                items: mockDrawings,
-                displayFields: [{ key: 'id' }, { key: 'title' }],
-                searchFields: ['id', 'title'],
-            });
-            setIsLinkModalOpen(true);
-            break;
-        case 'Link Photo':
-            setLinkModalConfig({
-                type: 'photo',
-                title: 'Link a Photo',
-                items: mockPhotos,
-                displayFields: [{ key: 'id' }, { key: 'title' }],
-                searchFields: ['id', 'title'],
-            });
-            setIsLinkModalOpen(true);
-            break;
-        default:
-            alert(`Linking ${type} for rectangle ${rectId}`);
-            break;
-    }
-  };
-
   const handleSelectLinkItem = (item: any) => {
-    if (!linkTargetRectId || !linkModalConfig) return;
-
-    setRectangles(prevRects => prevRects.map(rect => {
-        if (rect.id === linkTargetRectId) {
-            const newRect = { ...rect };
-            switch (linkModalConfig.type) {
-                case 'rfi':
-                    if (!newRect.rfi) newRect.rfi = [];
-                    if (!newRect.rfi.some(r => r.id === item.id)) {
-                        const originalRfi = rectangles.flatMap(r => r.rfi || []).find(rfi => rfi.id === item.id);
-                        if(originalRfi) newRect.rfi.push(originalRfi);
-                    }
-                    break;
-                case 'submittal':
-                    if (!newRect.submittals) newRect.submittals = [];
-                    if (!newRect.submittals.some(s => s.id === item.id)) newRect.submittals.push(item);
-                    break;
-                case 'punch':
-                    if (!newRect.punches) newRect.punches = [];
-                    if (!newRect.punches.some(p => p.id === item.id)) newRect.punches.push(item);
-                    break;
-                case 'drawing':
-                    if (!newRect.drawings) newRect.drawings = [];
-                    if (!newRect.drawings.some(d => d.id === item.id)) newRect.drawings.push(item);
-                    break;
-                case 'photo':
-                    if (!newRect.photos) newRect.photos = [];
-                    if (!newRect.photos.some(p => p.id === item.id)) newRect.photos.push(item);
-                    break;
+    if (linkTargetRectId) {
+        setRectangles(prevRects => prevRects.map(rect => {
+            if (rect.id === linkTargetRectId) {
+                const newRect = { ...rect };
+                switch (linkModalConfig?.type) {
+                    case 'rfi':
+                        if (!newRect.rfi) newRect.rfi = [];
+                        if (!newRect.rfi.some(r => r.id === item.id)) {
+                            const originalRfi = rectangles.flatMap(r => r.rfi || []).find(rfi => rfi.id === item.id);
+                            if(originalRfi) newRect.rfi.push(originalRfi);
+                        }
+                        break;
+                    case 'submittal':
+                        if (!newRect.submittals) newRect.submittals = [];
+                        if (!newRect.submittals.some(s => s.id === item.id)) newRect.submittals.push(item);
+                        break;
+                    case 'punch':
+                        if (!newRect.punches) newRect.punches = [];
+                        if (!newRect.punches.some(p => p.id === item.id)) newRect.punches.push(item);
+                        break;
+                    case 'drawing':
+                        if (!newRect.drawings) newRect.drawings = [];
+                        if (!newRect.drawings.some(d => d.id === item.id)) newRect.drawings.push(item);
+                        break;
+                    case 'photo':
+                        if (!newRect.photos) newRect.photos = [];
+                        if (!newRect.photos.some(p => p.id === item.id)) newRect.photos.push(item);
+                        break;
+                }
+                return newRect;
             }
-            return newRect;
-        }
-        return rect;
-    }));
+            return rect;
+        }));
+    } else if (pinTargetCoords && linkModalConfig?.type === 'photo') {
+        const newPin: Pin = {
+            id: `pin-${Date.now()}`,
+            type: 'photo',
+            x: pinTargetCoords.x,
+            y: pinTargetCoords.y,
+            linkedId: item.id
+        };
+        setPins(prev => [...prev, newPin]);
+        setPinTargetCoords(null);
+    }
+
 
     setIsLinkModalOpen(false);
     setLinkModalConfig(null);
@@ -591,6 +692,7 @@ const App: React.FC = () => {
 
   const handleClearRectangles = () => {
     setRectangles([]);
+    setPins([]);
     setSelectedRectIds([]);
     setLinkMenuRectId(null);
   };
@@ -637,6 +739,78 @@ const App: React.FC = () => {
     );
     handleRfiCancel();
   };
+
+  // Generic Panel Handlers
+    const handleSafetyPanelCancel = () => {
+        setIsSafetyPanelOpen(false);
+        setSafetyTargetPinId(null);
+        setSafetyFormData({ title: '', status: 'Open', severity: 'Medium' });
+        setPinTargetCoords(null);
+    };
+
+    const handlePunchPanelCancel = () => {
+        setIsPunchPanelOpen(false);
+        setPunchTargetPinId(null);
+        setPunchFormData({ title: '', status: 'Open', assignee: '' });
+        setPinTargetCoords(null);
+        setPunchSearchTerm('');
+    };
+
+    const handleSafetyFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        setSafetyFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    const handlePunchFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setPunchFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    const handleSafetySubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (safetyTargetPinId) { // Editing existing
+            const issueToUpdate = allSafetyIssues.find(i => i.id === pins.find(p => p.id === safetyTargetPinId)?.linkedId);
+            if(issueToUpdate) {
+                const updatedIssue = {...issueToUpdate, ...safetyFormData};
+                setAllSafetyIssues(prev => prev.map(i => i.id === updatedIssue.id ? updatedIssue : i));
+            }
+        } else if (pinTargetCoords) { // Creating new
+            const newIssue: SafetyIssueData = { id: `SAFE-${Date.now()}`, ...safetyFormData };
+            setAllSafetyIssues(prev => [...prev, newIssue]);
+            const newPin: Pin = { id: `pin-${Date.now()}`, type: 'safety', x: pinTargetCoords.x, y: pinTargetCoords.y, linkedId: newIssue.id };
+            setPins(prev => [...prev, newPin]);
+        }
+        handleSafetyPanelCancel();
+    };
+
+    const handlePunchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (punchTargetPinId) { // Editing existing
+            const itemToUpdate = allPunches.find(p => p.id === pins.find(pin => pin.id === punchTargetPinId)?.linkedId);
+            if(itemToUpdate) {
+                const updatedItem = {...itemToUpdate, ...punchFormData};
+                setAllPunches(prev => prev.map(p => p.id === updatedItem.id ? updatedItem : p));
+            }
+        } else if (pinTargetCoords) { // Creating new
+            const newItem: PunchData = { id: `PUNCH-${Date.now()}`, ...punchFormData };
+            setAllPunches(prev => [...prev, newItem]);
+            const newPin: Pin = { id: `pin-${Date.now()}`, type: 'punch', x: pinTargetCoords.x, y: pinTargetCoords.y, linkedId: newItem.id };
+            setPins(prev => [...prev, newPin]);
+        }
+        handlePunchPanelCancel();
+    };
+
+    const handleLinkExistingPunch = (punch: PunchData) => {
+      if (pinTargetCoords) {
+        const newPin: Pin = {
+          id: `pin-${Date.now()}`,
+          type: 'punch',
+          x: pinTargetCoords.x,
+          y: pinTargetCoords.y,
+          linkedId: punch.id,
+        };
+        setPins((prev) => [...prev, newPin]);
+      }
+      handlePunchPanelCancel();
+    };
   
   const handlePhotoUploadRequest = () => {
     photoFileInputRef.current?.click();
@@ -644,7 +818,7 @@ const App: React.FC = () => {
   
   const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      if (file && file.type.startsWith('image/') && linkTargetRectId) {
+      if (file && file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (e) => {
           const newPhoto: PhotoData = {
@@ -654,20 +828,27 @@ const App: React.FC = () => {
               source: 'upload',
               markups: [],
           };
-          
-          setRectangles(prevRects => prevRects.map(rect => {
-              if (rect.id === linkTargetRectId) {
-                  const newRect = {...rect};
-                  if (!newRect.photos) newRect.photos = [];
-                  newRect.photos.push(newPhoto);
-                  return newRect;
-              }
-              return rect;
-          }));
+          setAllPhotos(prev => [...prev, newPhoto]);
+
+          if (linkTargetRectId) {
+             setRectangles(prevRects => prevRects.map(rect => {
+                if (rect.id === linkTargetRectId) {
+                    const newRect = {...rect};
+                    if (!newRect.photos) newRect.photos = [];
+                    newRect.photos.push(newPhoto);
+                    return newRect;
+                }
+                return rect;
+             }));
+          } else if (pinTargetCoords) {
+             const newPin: Pin = { id: `pin-${Date.now()}`, type: 'photo', x: pinTargetCoords.x, y: pinTargetCoords.y, linkedId: newPhoto.id };
+             setPins(prev => [...prev, newPin]);
+          }
   
           setIsLinkModalOpen(false);
           setLinkModalConfig(null);
           setLinkTargetRectId(null);
+          setPinTargetCoords(null);
         };
         reader.readAsDataURL(file);
         event.target.value = ''; // Allows re-uploading the same file
@@ -676,21 +857,10 @@ const App: React.FC = () => {
 
   const handleUpdatePhotoMarkups = (newMarkups: PhotoMarkup[]) => {
     if (!photoViewerConfig) return;
-    const { rectId, photoId } = photoViewerConfig;
-
-    setRectangles(prevRects => prevRects.map(rect => {
-        if (rect.id === rectId) {
-            const newRect = {...rect};
-            newRect.photos = newRect.photos?.map(photo => {
-                if (photo.id === photoId) {
-                    return {...photo, markups: newMarkups};
-                }
-                return photo;
-            });
-            return newRect;
-        }
-        return rect;
-    }));
+    const { photoId } = photoViewerConfig;
+    setAllPhotos(prevPhotos => prevPhotos.map(photo => 
+        photo.id === photoId ? { ...photo, markups: newMarkups } : photo
+    ));
   };
 
   useEffect(() => {
@@ -707,7 +877,7 @@ const App: React.FC = () => {
   }, [selectedRectIds]);
 
   const getCursorClass = () => {
-    if (interaction.type === 'panning') return 'cursor-grabbing';
+    if (interaction.type === 'panning' || draggingPinId) return 'cursor-grabbing';
     switch (interaction.type) {
       case 'moving': return 'cursor-grabbing';
       case 'resizing':
@@ -718,6 +888,7 @@ const App: React.FC = () => {
       case 'marquee':
         return 'cursor-crosshair';
     }
+    if (activeTool === 'pin') return 'cursor-crosshair';
     if (activeTool === 'shape') {
       if (hoveredRectId) return 'cursor-move';
       return 'cursor-crosshair';
@@ -733,9 +904,8 @@ const App: React.FC = () => {
   const isMultiSelection = selectedRectIds.length > 1;
   const selectedRectangle = isSingleSelection ? rectangles.find(r => r.id === selectedRectIds[0]) : null;
   const lastSelectedRectangle = isMultiSelection ? rectangles.find(r => r.id === selectedRectIds[selectedRectIds.length - 1]) : null;
-  const currentPhotoForViewer = photoViewerConfig ? 
-    rectangles.find(r => r.id === photoViewerConfig.rectId)?.photos?.find(p => p.id === photoViewerConfig.photoId)
-    : null;
+  
+  const currentPhotoForViewer = photoViewerConfig ? allPhotos.find(p => p.id === photoViewerConfig.photoId) : null;
   
   let singleSelectionScreenRect = selectedRectangle ? getScreenRect(selectedRectangle) : null;
   let multiSelectionScreenRect = lastSelectedRectangle ? getScreenRect(lastSelectedRectangle) : null;
@@ -777,13 +947,15 @@ const App: React.FC = () => {
                 <button onClick={triggerFileUpload} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2">
                   <UploadIcon className="w-5 h-5" /> Change Image
                 </button>
-                <button onClick={handleClearRectangles} disabled={rectangles.length === 0} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:bg-red-300 dark:disabled:bg-red-900 disabled:text-gray-500 dark:disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2">
+                <button onClick={handleClearRectangles} disabled={rectangles.length === 0 && pins.length === 0} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:bg-red-300 dark:disabled:bg-red-900 disabled:text-gray-500 dark:disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2">
                   <TrashIcon className="w-5 h-5" /> Clear All
                 </button>
               </div>
             </div>
             <div className="relative w-full flex-grow flex gap-4">
-              <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} activeShape={activeShape} setActiveShape={setActiveShape} />
+              <div className="relative z-10">
+                <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} activeShape={activeShape} setActiveShape={setActiveShape} activePinType={activePinType} setActivePinType={setActivePinType} />
+              </div>
               <div
                 ref={imageContainerRef}
                 className={`relative w-full flex-grow overflow-hidden rounded-lg select-none bg-gray-200 dark:bg-gray-900/50 ${getCursorClass()}`}
@@ -821,6 +993,68 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Screen-space Overlays */}
+                {pins.map(pin => {
+                    const screenPos = getScreenPoint(pin.x, pin.y);
+                    if (!screenPos) return null;
+                    const PinIcon = { photo: PhotoPinIcon, safety: SafetyPinIcon, punch: PunchPinIcon }[pin.type];
+                    const pinCursor = activeTool === 'select' ? (draggingPinId === pin.id ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer';
+
+                    return (
+                        <div
+                            key={pin.id}
+                            className={`absolute w-8 h-8 transform -translate-x-1/2 -translate-y-full ${pinCursor}`}
+                            style={{ left: screenPos.left, top: screenPos.top, pointerEvents: 'auto', zIndex: 15 }}
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                                mouseDownRef.current = { x: e.clientX, y: e.clientY };
+                                if (activeTool === 'select') {
+                                    setDraggingPinId(pin.id);
+                                }
+                            }}
+                            onClick={(e) => {
+                                const startPoint = mouseDownRef.current;
+                                const isClick = startPoint && Math.abs(e.clientX - startPoint.x) < 5 && Math.abs(e.clientY - startPoint.y) < 5;
+                                if (!isClick && activeTool === 'select') return; // It was a drag
+
+                                if (pin.type === 'photo') {
+                                    setPhotoViewerConfig({ photoId: pin.linkedId, pinId: pin.id });
+                                    setIsPhotoViewerOpen(true);
+                                } else if (pin.type === 'safety') {
+                                    const issue = allSafetyIssues.find(i => i.id === pin.linkedId);
+                                    if(issue) {
+                                        setSafetyFormData(issue);
+                                        setSafetyTargetPinId(pin.id);
+                                        setIsSafetyPanelOpen(true);
+                                    }
+                                } else if (pin.type === 'punch') {
+                                    const punchItem = allPunches.find(p => p.id === pin.linkedId);
+                                    if(punchItem) {
+                                        setPunchFormData(punchItem);
+                                        setPunchTargetPinId(pin.id);
+                                        setPunchPanelMode('create');
+                                        setIsPunchPanelOpen(true);
+                                    }
+                                }
+                            }}
+                            onMouseEnter={(e) => {
+                                if (hidePopupTimer.current) clearTimeout(hidePopupTimer.current);
+                                const pinRect = e.currentTarget.getBoundingClientRect();
+                                setHoveredItem({
+                                    type: 'pin',
+                                    pin: pin,
+                                    itemId: pin.id,
+                                    position: { top: pinRect.top + pinRect.height / 2, left: pinRect.right }
+                                });
+                            }}
+                            onMouseLeave={() => {
+                                hidePopupTimer.current = window.setTimeout(() => setHoveredItem(null), 300);
+                            }}
+                        >
+                            <PinIcon className="w-full h-full drop-shadow-lg" />
+                        </div>
+                    );
+                })}
+
                 {singleSelectionScreenRect && (
                   <>
                     {(['tl', 'tr', 'bl', 'br'] as ResizeHandle[]).map(handle => (
@@ -875,7 +1109,7 @@ const App: React.FC = () => {
                                             )}
                                         </div>
                                         {['Link Submittal', 'Link Punch', 'Link Drawing', 'Link Photo'].map(type => (
-                                            <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left">{type}</button>
+                                            <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left">{type.replace('Link ','')}</button>
                                         ))}
                                     </div>
                                 </div>
@@ -993,78 +1227,126 @@ const App: React.FC = () => {
 
       {/* Item Hover Popup */}
       {hoveredItem && (() => {
-        const rect = rectangles.find(r => r.id === hoveredItem.rectId);
         let content = null;
     
-        if (rect) {
-            switch (hoveredItem.type) {
-                case 'rfi':
-                    const rfi = rect.rfi?.find(r => r.id === hoveredItem.itemId);
-                    if (rfi) content = (
-                        <>
-                            <h4 className="font-bold text-cyan-400 mb-2 truncate">RFI-{rfi.id}: {rfi.title}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Type:</span> {rfi.type}</p>
-                            <div className="text-sm text-gray-600 dark:text-gray-300 mb-3 max-h-24 overflow-y-auto">
-                                <span className="font-semibold text-gray-500 dark:text-gray-400">Question:</span>
-                                <p className="whitespace-pre-wrap break-words">{rfi.question}</p>
-                            </div>
-                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/rfi/uiSFtnkKXNpn5Koz/details?tab=details" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full RFI &rarr;</a>
-                        </>
-                    );
-                    break;
-                case 'submittal':
-                    const submittal = rect.submittals?.find(s => s.id === hoveredItem.itemId);
-                    if (submittal) content = (
-                        <>
-                            <h4 className="font-bold text-green-400 mb-2 truncate">{submittal.id}: {submittal.title}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Spec Section:</span> {submittal.specSection}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {submittal.status}</p>
-                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/submittals/package/FMVmW4xEe9bcHUTp/registries/Xh6FHaQZ9Dyv6V3i/?tab=response" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Submittal &rarr;</a>
-                        </>
-                    );
-                    break;
-                case 'punch':
-                    const punch = rect.punches?.find(p => p.id === hoveredItem.itemId);
-                    if (punch) content = (
-                        <>
-                            <h4 className="font-bold text-orange-400 mb-2 truncate">{punch.id}: {punch.title}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Assignee:</span> {punch.assignee}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {punch.status}</p>
-                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/quality/punchList/H7SakWBed794KRdU/details?tab=details" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Punch Item &rarr;</a>
-                        </>
-                    );
-                    break;
-                case 'drawing':
-                    const drawing = rect.drawings?.find(d => d.id === hoveredItem.itemId);
-                    if (drawing) content = (
-                        <>
-                            <h4 className="font-bold text-indigo-400 mb-2 truncate">{drawing.id}: {drawing.title}</h4>
-                            <img src={drawing.thumbnailUrl} alt={drawing.title} className="rounded-md mb-3 w-full object-cover" />
-                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/newPlans/markup/A-3.2/AHV6vNEm20250627115709/latest" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Drawing &rarr;</a>
-                        </>
-                    );
-                    break;
-                case 'photo':
-                    const photo = rect.photos?.find(p => p.id === hoveredItem.itemId);
-                    if (photo) content = (
-                        <>
-                            <h4 className="font-bold text-yellow-400 mb-2 truncate">{photo.id}: {photo.title}</h4>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPhotoViewerConfig({ rectId: rect.id, photoId: photo.id });
-                                    setIsPhotoViewerOpen(true);
-                                    setHoveredItem(null); // Close the popup
-                                }}
-                                className="rounded-md mb-3 w-full h-32 block hover:opacity-80 transition-opacity cursor-pointer"
-                            >
-                                <img src={photo.url} alt={photo.title} className="w-full h-full object-cover rounded-md" />
-                            </button>
-                            <p className="text-sm text-gray-400">Click tag or thumbnail to view & annotate.</p>
-                        </>
-                    );
-                    break;
-            }
+        switch (hoveredItem.type) {
+            case 'pin':
+                const pin = hoveredItem.pin;
+                if (pin) {
+                    if (pin.type === 'photo') {
+                        const photo = allPhotos.find(p => p.id === pin.linkedId);
+                         if (photo) content = (
+                            <>
+                                <h4 className="font-bold text-yellow-400 mb-2 truncate">{photo.id}: {photo.title}</h4>
+                                 <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPhotoViewerConfig({ photoId: photo.id, pinId: pin.id });
+                                        setIsPhotoViewerOpen(true);
+                                        setHoveredItem(null); // Close the popup
+                                    }}
+                                    className="rounded-md mb-3 w-full h-32 block hover:opacity-80 transition-opacity cursor-pointer"
+                                >
+                                    <img src={photo.url} alt={photo.title} className="w-full h-full object-cover rounded-md" />
+                                </button>
+                                <p className="text-sm text-gray-400">Click pin or thumbnail to view & annotate.</p>
+                            </>
+                        );
+                    } else if (pin.type === 'safety') {
+                        const issue = allSafetyIssues.find(i => i.id === pin.linkedId);
+                        if (issue) content = (
+                             <>
+                                <h4 className="font-bold text-red-400 mb-2 truncate">{issue.id}: {issue.title}</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Severity:</span> {issue.severity}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {issue.status}</p>
+                                <p className="text-sm text-gray-400">Click pin to view details.</p>
+                             </>
+                        );
+                    } else if (pin.type === 'punch') {
+                        const punch = allPunches.find(p => p.id === pin.linkedId);
+                        if (punch) content = (
+                            <>
+                                <h4 className="font-bold text-orange-400 mb-2 truncate">{punch.id}: {punch.title}</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Assignee:</span> {punch.assignee}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {punch.status}</p>
+                                <p className="text-sm text-gray-400">Click pin to view details.</p>
+                            </>
+                        );
+                    }
+                }
+                break;
+            default:
+                const rect = rectangles.find(r => r.id === hoveredItem.rectId);
+                if (rect) {
+                    switch (hoveredItem.type) {
+                        case 'rfi':
+                            const rfi = rect.rfi?.find(r => r.id === hoveredItem.itemId);
+                            if (rfi) content = (
+                                <>
+                                    <h4 className="font-bold text-cyan-400 mb-2 truncate">RFI-{rfi.id}: {rfi.title}</h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Type:</span> {rfi.type}</p>
+                                    <div className="text-sm text-gray-600 dark:text-gray-300 mb-3 max-h-24 overflow-y-auto">
+                                        <span className="font-semibold text-gray-500 dark:text-gray-400">Question:</span>
+                                        <p className="whitespace-pre-wrap break-words">{rfi.question}</p>
+                                    </div>
+                                    <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/rfi/uiSFtnkKXNpn5Koz/details?tab=details" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full RFI &rarr;</a>
+                                </>
+                            );
+                            break;
+                        case 'submittal':
+                            const submittal = rect.submittals?.find(s => s.id === hoveredItem.itemId);
+                            if (submittal) content = (
+                                <>
+                                    <h4 className="font-bold text-green-400 mb-2 truncate">{submittal.id}: {submittal.title}</h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Spec Section:</span> {submittal.specSection}</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {submittal.status}</p>
+                                    <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/submittals/package/FMVmW4xEe9bcHUTp/registries/Xh6FHaQZ9Dyv6V3i/?tab=response" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Submittal &rarr;</a>
+                                </>
+                            );
+                            break;
+                        case 'punch':
+                            const punch = rect.punches?.find(p => p.id === hoveredItem.itemId);
+                            if (punch) content = (
+                                <>
+                                    <h4 className="font-bold text-orange-400 mb-2 truncate">{punch.id}: {punch.title}</h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Assignee:</span> {punch.assignee}</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {punch.status}</p>
+                                    <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/quality/punchList/H7SakWBed794KRdU/details?tab=details" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Punch Item &rarr;</a>
+                                </>
+                            );
+                            break;
+                        case 'drawing':
+                            const drawing = rect.drawings?.find(d => d.id === hoveredItem.itemId);
+                            if (drawing) content = (
+                                <>
+                                    <h4 className="font-bold text-indigo-400 mb-2 truncate">{drawing.id}: {drawing.title}</h4>
+                                    <img src={drawing.thumbnailUrl} alt={drawing.title} className="rounded-md mb-3 w-full object-cover" />
+                                    <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/newPlans/markup/A-3.2/AHV6vNEm20250627115709/latest" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Drawing &rarr;</a>
+                                </>
+                            );
+                            break;
+                        case 'photo':
+                            const photo = rect.photos?.find(p => p.id === hoveredItem.itemId);
+                            if (photo) content = (
+                                <>
+                                    <h4 className="font-bold text-yellow-400 mb-2 truncate">{photo.id}: {photo.title}</h4>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPhotoViewerConfig({ rectId: rect.id, photoId: photo.id });
+                                            setIsPhotoViewerOpen(true);
+                                            setHoveredItem(null); // Close the popup
+                                        }}
+                                        className="rounded-md mb-3 w-full h-32 block hover:opacity-80 transition-opacity cursor-pointer"
+                                    >
+                                        <img src={photo.url} alt={photo.title} className="w-full h-full object-cover rounded-md" />
+                                    </button>
+                                    <p className="text-sm text-gray-400">Click tag or thumbnail to view & annotate.</p>
+                                </>
+                            );
+                            break;
+                    }
+                }
         }
     
         if (!content) return null;
@@ -1088,7 +1370,10 @@ const App: React.FC = () => {
       <LinkModal
         isOpen={isLinkModalOpen}
         config={linkModalConfig}
-        onClose={() => setIsLinkModalOpen(false)}
+        onClose={() => {
+            setIsLinkModalOpen(false);
+            setPinTargetCoords(null);
+        }}
         onSelect={handleSelectLinkItem}
         onUploadRequest={handlePhotoUploadRequest}
       />
@@ -1138,6 +1423,86 @@ const App: React.FC = () => {
                       <button type="submit" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">{isRfiEditMode ? 'Save Changes' : 'Create Draft'}</button>
                   </div>
               </form>
+          </div>
+      </div>
+      
+      {/* Safety Issue Side Panel */}
+      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isSafetyPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className="p-6 flex flex-col h-full">
+              <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{safetyTargetPinId ? 'Edit' : 'Create'} Safety Issue</h2>
+                  <button onClick={handleSafetyPanelCancel} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" /></button>
+              </div>
+              <form onSubmit={handleSafetySubmit} className="flex flex-col flex-grow">
+                  <div className="mb-4">
+                      <label htmlFor="safety-title" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Title</label>
+                      <input type="text" name="title" id="safety-title" value={safetyFormData.title} onChange={handleSafetyFormChange} required className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white" />
+                  </div>
+                  <div className="mb-4">
+                      <label htmlFor="safety-severity" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Severity</label>
+                      <select name="severity" id="safety-severity" value={safetyFormData.severity} onChange={handleSafetyFormChange} className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white">
+                          <option>Low</option><option>Medium</option><option>High</option>
+                      </select>
+                  </div>
+                  <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <button type="button" onClick={handleSafetyPanelCancel} className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                      <button type="submit" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">{safetyTargetPinId ? 'Save' : 'Create'}</button>
+                  </div>
+              </form>
+          </div>
+      </div>
+      
+      {/* Punch List Side Panel */}
+      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isPunchPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className="p-6 flex flex-col h-full">
+              <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{punchTargetPinId ? 'Edit' : 'Create'} Punch List Item</h2>
+                  <button onClick={handlePunchPanelCancel} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" /></button>
+              </div>
+              
+              {!punchTargetPinId && (
+                <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+                    <button onClick={() => setPunchPanelMode('create')} className={`flex-1 py-2 text-sm font-semibold transition-colors ${punchPanelMode === 'create' ? 'border-b-2 border-cyan-500 text-cyan-500 dark:text-cyan-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>Create New</button>
+                    <button onClick={() => setPunchPanelMode('link')} className={`flex-1 py-2 text-sm font-semibold transition-colors ${punchPanelMode === 'link' ? 'border-b-2 border-cyan-500 text-cyan-500 dark:text-cyan-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>Link Existing</button>
+                </div>
+              )}
+
+              {punchPanelMode === 'create' || punchTargetPinId ? (
+                <form onSubmit={handlePunchSubmit} className="flex flex-col flex-grow">
+                    <div className="mb-4">
+                        <label htmlFor="punch-title" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Title</label>
+                        <input type="text" name="title" id="punch-title" value={punchFormData.title} onChange={handlePunchFormChange} required className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white" />
+                    </div>
+                    <div className="mb-4">
+                        <label htmlFor="punch-assignee" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Assignee</label>
+                        <input type="text" name="assignee" id="punch-assignee" value={punchFormData.assignee} onChange={handlePunchFormChange} required className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white" />
+                    </div>
+                    <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button type="button" onClick={handlePunchPanelCancel} className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button type="submit" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">{punchTargetPinId ? 'Save' : 'Create'}</button>
+                    </div>
+                </form>
+              ) : (
+                <div className="flex flex-col flex-grow">
+                   <input 
+                        type="text" 
+                        placeholder="Search existing punch items..."
+                        value={punchSearchTerm}
+                        onChange={e => setPunchSearchTerm(e.target.value)}
+                        className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 mb-4 text-gray-900 dark:text-white focus:ring-cyan-500 focus:border-cyan-500" 
+                    />
+                    <ul className="overflow-y-auto -mr-6 pr-6">
+                        {allPunches.filter(p => p.title.toLowerCase().includes(punchSearchTerm.toLowerCase()) || p.assignee.toLowerCase().includes(punchSearchTerm.toLowerCase())).map(punch => (
+                            <li key={punch.id}>
+                                <button onClick={() => handleLinkExistingPunch(punch)} className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                    <p className="font-semibold text-gray-800 dark:text-gray-200">{punch.id}: {punch.title}</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Assignee: {punch.assignee}</p>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+              )}
           </div>
       </div>
     </div>

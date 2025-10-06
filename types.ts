@@ -78,3 +78,24 @@ export interface Rectangle {
   drawings?: DrawingData[];
   photos?: PhotoData[];
 }
+
+/**
+ * Represents Safety Issue data.
+ */
+export interface SafetyIssueData {
+  id: string;
+  title: string;
+  status: 'Open' | 'In Progress' | 'Closed';
+  severity: 'Low' | 'Medium' | 'High';
+}
+
+/**
+ * Represents a location-based pin on the blueprint.
+ */
+export interface Pin {
+  id: string;
+  type: 'photo' | 'safety' | 'punch';
+  x: number; // percentage
+  y: number; // percentage
+  linkedId: string; // id of PhotoData, SafetyIssueData, or PunchData
+}

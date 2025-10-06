@@ -148,3 +148,31 @@ export const MoonIcon: React.FC<IconProps> = ({ className }) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25c0 5.385 4.365 9.75 9.75 9.75 2.572 0 4.92-.99 6.752-2.648z" />
     </svg>
 );
+
+export const PhotoPinIcon: React.FC<IconProps> = ({ className }) => (
+  <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <path d="M16 32s10-13.438 10-19A10 10 0 106 13c0 5.562 10 19 10 19z" className="text-yellow-500" fill="currentColor" />
+    <g transform="translate(11 8) scale(0.416)" fill="currentColor" className="text-gray-800">
+      <path d="M12 12.75a3 3 0 100-6 3 3 0 000 6z" />
+      <path fillRule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V6c0-.414.336-.75.75-.75h16.5c.414 0 .75.336.75.75v10.06l-3.56-3.56a.75.75 0 00-1.06 0l-3.06 3.06a.75.75 0 01-1.06 0l-1.72-1.72a.75.75 0 00-1.06 0l-5.69 5.69a.75.75 0 001.06 1.06l4.19-4.19a.75.75 0 011.06 0l1.72 1.72a.75.75 0 001.06 0l3.06-3.06a.75.75 0 011.06 0l3.56 3.56a.75.75 0 00-1.06 1.06l.001-.001z" clipRule="evenodd" />
+    </g>
+  </svg>
+);
+
+export const SafetyPinIcon: React.FC<IconProps> = ({ className }) => (
+    <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <path d="M16 32s10-13.438 10-19A10 10 0 106 13c0 5.562 10 19 10 19z" className="text-red-500" fill="currentColor" />
+      <g transform="translate(11 8) scale(0.416)" fill="currentColor" className="text-white">
+        <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.198 0l7.5 13c1.155 2-.77 4.5-3.299 4.5H5.198c-2.52 0-4.455-2.5-3.299-4.5l7.5-13zM12 10.5a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25a.75.75 0 01.75-.75zm0 6a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
+      </g>
+    </svg>
+);
+
+export const PunchPinIcon: React.FC<IconProps> = ({ className }) => (
+    <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" className={className}>
+        <path d="M16 32s10-13.438 10-19A10 10 0 106 13c0 5.562 10 19 10 19z" className="text-blue-500" fill="currentColor" />
+        <g transform="translate(11 8) scale(0.416)" fill="currentColor" className="text-white">
+            <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071 1.052A32.94 32.94 0 0113.4 15.182V19.5a.75.75 0 01-1.5 0v-4.318c0-.78-.31-1.53-.878-2.098S9.79 7.5 9 7.5c-.79 0-1.53.31-2.098.878S6 9.97 6 10.75v3.53c-.792.223-1.58.49-2.355.79A.75.75 0 003 15.825V18a.75.75 0 00.75.75h16.5a.75.75 0 00.75-.75v-2.175a.75.75 0 00-.355-1.007c-.775-.298-1.563-.567-2.355-.79v-3.53c0-.78-.31-1.53-.878-2.098S14.29 7.5 13.5 7.5c-.79 0-1.53.31-2.098.878s-.878 1.318-.878 2.098v4.682a32.94 32.94 0 011.437-12.896.75.75 0 00-1.052-1.07z" clipRule="evenodd" />
+        </g>
+    </svg>
+);
