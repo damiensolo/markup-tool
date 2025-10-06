@@ -1,3 +1,5 @@
+
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   MousePointerIcon, PenIcon, BoxIcon, ArrowIcon, TextIcon, DistanceIcon, DrawingIcon,
@@ -104,13 +106,8 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
     { id: 'punch', label: 'Punch', icon: <PunchPinIcon className="w-6 h-6" /> },
   ];
   
-  const getActiveShapeTool = () => {
-    return shapeTools.find(s => s.id === activeShape) || shapeTools[1];
-  }
-
-  const getActivePinTool = () => {
-    return pinTools.find(p => p.id === activePinType) || pinTools[0];
-  }
+  const currentShapeTool = shapeTools.find(s => s.id === activeShape) || shapeTools[1];
+  const currentPinTool = pinTools.find(p => p.id === activePinType) || pinTools[1];
 
   return (
     <div className="relative">
@@ -121,7 +118,6 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
             isActive={activeTool === 'select'}
             onClick={() => handleToolClick('select')}
         />
-        <hr className="border-gray-300 dark:border-gray-500 my-1" />
         <ToolButton
             label="Pen"
             icon={<PenIcon />}
@@ -135,10 +131,10 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
                 className={`relative flex flex-col items-center justify-center w-full p-2 rounded-lg transition-colors duration-200 ${
                     activeTool === 'shape' ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
-                title={getActiveShapeTool().label}
+                title={currentShapeTool.label}
             >
-                <div className="w-6 h-6">{getActiveShapeTool().icon}</div>
-                <span className="text-xs mt-1">{getActiveShapeTool().label}</span>
+                <div className="w-6 h-6">{currentShapeTool.icon}</div>
+                <span className="text-xs mt-1">{currentShapeTool.label}</span>
                 <div className="absolute bottom-1 right-1 pointer-events-none">
                     <svg viewBox="0 0 6 6" className="w-1.5 h-1.5 text-gray-800 dark:text-gray-300">
                         <path d="M6 6L0 6L6 0Z" fill="currentColor" />
@@ -173,8 +169,6 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
                 onClick={() => handleToolClick(tool.id as ActiveTool)}
             />
         ))}
-
-        <hr className="border-gray-300 dark:border-gray-500 my-1" />
         
         {/* Pin Tool Flyout */}
         <div ref={pinMenuRef} className="relative">
@@ -183,10 +177,10 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
                 className={`relative flex flex-col items-center justify-center w-full p-2 rounded-lg transition-colors duration-200 ${
                     activeTool === 'pin' ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
-                title={getActivePinTool().label}
+                title={currentPinTool.label}
             >
-                <div className="w-6 h-6">{getActivePinTool().icon}</div>
-                <span className="text-xs mt-1">{getActivePinTool().label}</span>
+                <div className="w-6 h-6">{currentPinTool.icon}</div>
+                <span className="text-xs mt-1">{currentPinTool.label}</span>
                 <div className="absolute bottom-1 right-1 pointer-events-none">
                     <svg viewBox="0 0 6 6" className="w-1.5 h-1.5 text-gray-800 dark:text-gray-300">
                         <path d="M6 6L0 6L6 0Z" fill="currentColor" />

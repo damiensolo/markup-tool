@@ -1,13 +1,17 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData, PhotoData, PhotoMarkup, Pin, SafetyIssueData } from './types';
-import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon, SafetyPinIcon, PunchPinIcon, PhotoPinIcon, InformationCircleIcon } from './components/Icons';
+import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon, SafetyPinIcon, PunchPinIcon, PhotoPinIcon, InformationCircleIcon, FilterIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br';
 type ActiveTool = 'select' | 'shape' | 'pen' | 'arrow' | 'text' | 'distance' | 'drawing' | 'pin';
 type ActivePinType = 'photo' | 'safety' | 'punch';
 type ActiveShape = 'cloud' | 'box' | 'ellipse';
+type FilterCategory = 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo' | 'safety';
+
+// FIX: Define a more specific type for rectangle tags to resolve a type mismatch when setting the hovered item.
+type RectangleTagType = Exclude<FilterCategory, 'safety'>;
 
 interface ViewTransform {
   scale: number;
@@ -71,6 +75,7 @@ const mockPhotos: PhotoData[] = [
 ];
 
 const mockSafetyIssues: SafetyIssueData[] = [
+    { id: 'SAFE-1759781996802', title: 'asdfasdf', description: 'Large opening in the floor on the west side of Level 2, near column B-4. Needs immediate covering.', status: 'Open', severity: 'Medium' },
     { id: 'SAFE-001', title: 'Uncovered floor opening', description: 'Large opening in the floor on the west side of Level 2, near column B-4. Needs immediate covering.', status: 'Open', severity: 'High' },
     { id: 'SAFE-002', title: 'Missing guardrail on 2nd floor', description: 'The entire southern balcony on the second floor is missing its guardrail.', status: 'In Progress', severity: 'High' },
     { id: 'SAFE-003', title: 'Improperly stored flammable materials', description: 'Gasoline cans and other flammable materials stored next to an active welding station.', status: 'Closed', severity: 'Medium' },
@@ -84,7 +89,7 @@ const App: React.FC = () => {
   const [allPunches, setAllPunches] = useState<PunchData[]>(mockPunches);
   const [allSafetyIssues, setAllSafetyIssues] = useState<SafetyIssueData[]>(mockSafetyIssues);
   const [selectedRectIds, setSelectedRectIds] = useState<string[]>([]);
-  const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
+  const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   const [hoveredRectId, setHoveredRectId] = useState<string | null>(null);
   const [linkMenuRectId, setLinkMenuRectId] = useState<string | null>(null);
   const [currentRect, setCurrentRect] = useState<Omit<Rectangle, 'id'> | null>(null);
@@ -92,7 +97,7 @@ const App: React.FC = () => {
   const [interaction, setInteraction] = useState<InteractionState>({ type: 'none' });
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
   const [activeShape, setActiveShape] = useState<ActiveShape>('box');
-  const [activePinType, setActivePinType] = useState<ActivePinType>('photo');
+  const [activePinType, setActivePinType] = useState<ActivePinType>('safety');
   const [viewTransform, setViewTransform] = useState<ViewTransform>({ scale: 1, translateX: 0, translateY: 0 });
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
   
@@ -114,7 +119,7 @@ const App: React.FC = () => {
   
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<HoveredItemInfo | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkModalConfig, setLinkModalConfig] = useState<LinkModalConfig | null>(null);
@@ -123,6 +128,17 @@ const App: React.FC = () => {
   const [openLinkSubmenu, setOpenLinkSubmenu] = useState<string | null>(null);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [photoViewerConfig, setPhotoViewerConfig] = useState<{ rectId?: string; photoId: string, pinId?: string } | null>(null);
+  
+  const [filters, setFilters] = useState<Record<FilterCategory, boolean>>({
+    rfi: true,
+    submittal: true,
+    punch: true,
+    drawing: true,
+    photo: true,
+    safety: true,
+  });
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
 
 
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -133,21 +149,24 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-    setTheme(initialTheme);
-  }, []);
-  
-  useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
     }
   }, [theme]);
+  
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+        setIsFilterMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleThemeToggle = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
@@ -222,7 +241,7 @@ const App: React.FC = () => {
   }, [viewTransform]);
 
   const normalizeRect = (rect: Omit<Rectangle, 'id'> | Rectangle): Rectangle => {
-    const newRect = { ...rect, id: 'id' in rect ? rect.id : '', shape: 'shape' in rect ? rect.shape : activeShape };
+    const newRect = { ...rect, id: 'id' in rect ? rect.id : '', shape: 'shape' in rect && rect.shape ? rect.shape : activeShape };
     if (newRect.width < 0) {
       newRect.x = newRect.x + newRect.width;
       newRect.width = Math.abs(newRect.width);
@@ -348,6 +367,11 @@ const App: React.FC = () => {
   }, [rectangles, allPhotos, allPunches, handleOpenRfiPanel]);
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // Prevent deselection when clicking on interactive UI elements like context menus
+    if ((event.target as HTMLElement).closest('[data-interactive-ui="true"]')) {
+        return;
+    }
+
     mouseDownRef.current = { x: event.clientX, y: event.clientY };
     if (interaction.type !== 'none' || draggingPinId) return;
     
@@ -363,6 +387,8 @@ const App: React.FC = () => {
     
     const coords = getRelativeCoords(event);
     if (!coords) return;
+    
+    setSelectedPinId(null);
 
     const clickedRect = [...rectangles].reverse().find(rect => {
       const normalized = normalizeRect(rect);
@@ -414,6 +440,7 @@ const App: React.FC = () => {
   }, [getRelativeCoords, interaction.type, rectangles, activeTool, activeShape, selectedRectIds, viewTransform, isRfiPanelOpen, handleRfiCancel, draggingPinId]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (selectedPinId) return;
     const coords = getRelativeCoords(event);
 
     if (draggingPinId && coords) {
@@ -500,7 +527,7 @@ const App: React.FC = () => {
         break;
       }
     }
-  }, [getRelativeCoords, interaction, activeTool, rectangles, draggingPinId, activeShape]);
+  }, [getRelativeCoords, interaction, activeTool, rectangles, draggingPinId, activeShape, selectedPinId]);
 
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const startPoint = mouseDownRef.current;
@@ -743,31 +770,33 @@ const App: React.FC = () => {
     handleRfiCancel();
   };
 
-    const handlePinDetails = (pin: Pin) => {
-        if (pin.type === 'photo') {
-            setPhotoViewerConfig({ photoId: pin.linkedId, pinId: pin.id });
-            setIsPhotoViewerOpen(true);
-        } else if (pin.type === 'safety') {
-            const issue = allSafetyIssues.find(i => i.id === pin.linkedId);
-            if (issue) {
-                setSafetyFormData(issue);
-                setSafetyTargetPinId(pin.id);
-                setIsSafetyPanelOpen(true);
-            }
-        } else if (pin.type === 'punch') {
-            const punchItem = allPunches.find(p => p.id === pin.linkedId);
-            if (punchItem) {
-                setPunchFormData(punchItem);
-                setPunchTargetPinId(pin.id);
-                setPunchPanelMode('create');
-                setIsPunchPanelOpen(true);
-            }
-        }
-    };
+  const handlePinDetails = (pin: Pin) => {
+      setSelectedPinId(null);
+      if (pin.type === 'photo') {
+          setPhotoViewerConfig({ photoId: pin.linkedId, pinId: pin.id });
+          setIsPhotoViewerOpen(true);
+      } else if (pin.type === 'safety') {
+          const issue = allSafetyIssues.find(i => i.id === pin.linkedId);
+          if (issue) {
+              setSafetyFormData(issue);
+              setSafetyTargetPinId(pin.id);
+              setIsSafetyPanelOpen(true);
+          }
+      } else if (pin.type === 'punch') {
+          const punchItem = allPunches.find(p => p.id === pin.linkedId);
+          if (punchItem) {
+              setPunchFormData(punchItem);
+              setPunchTargetPinId(pin.id);
+              setPunchPanelMode('create');
+              setIsPunchPanelOpen(true);
+          }
+      }
+  };
 
-    const handleDeletePin = (pinId: string) => {
-        setPins(prev => prev.filter(p => p.id !== pinId));
-    };
+  const handleDeletePin = (pinId: string) => {
+      setPins(prev => prev.filter(p => p.id !== pinId));
+      setSelectedPinId(null);
+  };
 
   // Generic Panel Handlers
     const handleSafetyPanelCancel = () => {
@@ -942,15 +971,32 @@ const App: React.FC = () => {
 
   const generateCloudPath = (w: number, h: number) => {
     if (w <= 0 || h <= 0) return '';
-    return `M ${w * 0.37} ${h * 0.95} 
-            A ${w * 0.19} ${h * 0.19} 0 0 1 ${w * 0.21} ${h * 0.75}
-            A ${w * 0.25} ${h * 0.25} 0 0 1 ${w * 0.25} ${h * 0.35}
-            A ${w * 0.22} ${h * 0.22} 0 0 1 ${w * 0.5} ${h * 0.2}
-            A ${w * 0.25} ${h * 0.25} 0 0 1 ${w * 0.75} ${h * 0.3}
-            A ${w * 0.20} ${h * 0.20} 0 0 1 ${w * 0.79} ${h * 0.75}
-            A ${w * 0.19} ${h * 0.19} 0 0 1 ${w * 0.63} ${h * 0.95} 
+    const cr = Math.min(w, h) * 0.15; // cloud radius based on smaller dimension
+    return `M ${w * 0.25},${h * 0.8}
+            A ${cr},${cr} 0 0 1 ${w * 0.1},${h * 0.6}
+            A ${cr},${cr} 0 0 1 ${w * 0.25},${h * 0.4}
+            A ${cr * 1.2},${cr * 1.2} 0 0 1 ${w * 0.5},${h * 0.3}
+            A ${cr * 1.3},${cr * 1.3} 0 0 1 ${w * 0.75},${h * 0.45}
+            A ${cr},${cr} 0 0 1 ${w * 0.9},${h * 0.65}
+            A ${cr},${cr} 0 0 1 ${w * 0.75},${h * 0.8}
             Z`;
   };
+  
+  const areFiltersActive = Object.values(filters).some(v => !v);
+  
+  const handleFilterChange = (filter: FilterCategory) => {
+    setFilters(prev => ({...prev, [filter]: !prev[filter]}));
+  };
+
+  const handleToggleAllFilters = () => {
+    const areAllOn = Object.values(filters).every(v => v);
+    const newFilters: Record<FilterCategory, boolean> = { ...filters };
+    for (const key in newFilters) {
+        newFilters[key as FilterCategory] = !areAllOn;
+    }
+    setFilters(newFilters);
+  };
+
 
   return (
     <div className="h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white flex flex-col items-stretch p-4 overflow-hidden">
@@ -971,31 +1017,57 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="w-full h-full flex flex-col">
-            <div className="flex justify-end items-center mb-2 flex-wrap gap-2">
-              <div className="flex items-center gap-4">
-                 <button
-                    onClick={handleThemeToggle}
-                    className="p-2 rounded-lg transition-colors duration-200 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white"
-                    title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-                >
-                    {theme === 'dark' ? (
-                        <SunIcon className="w-5 h-5" />
-                    ) : (
-                        <MoonIcon className="w-5 h-5" />
+             <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                 <div>
+                    <button
+                        onClick={triggerFileUpload}
+                        className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
+                    >
+                        Change Image
+                    </button>
+                    <button
+                        onClick={handleClearRectangles}
+                        className="ml-2 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
+                    >
+                        Clear All
+                    </button>
+                </div>
+                <div ref={filterMenuRef} className="relative">
+                    <button
+                        onClick={() => setIsFilterMenuOpen(prev => !prev)}
+                        className={`relative bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2`}
+                    >
+                        <FilterIcon className="w-5 h-5" /> Filter
+                        {areFiltersActive && <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full bg-cyan-500 border-2 border-white dark:border-gray-800" />}
+                    </button>
+                    {isFilterMenuOpen && (
+                        <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 p-4">
+                           <div className="flex justify-between items-center pb-2 border-b border-gray-200 dark:border-gray-700 mb-2">
+                                <h4 className="font-semibold">Filter Items</h4>
+                                <button onClick={handleToggleAllFilters} className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 hover:underline">
+                                    {Object.values(filters).every(v => v) ? 'Hide All' : 'Show All'}
+                                </button>
+                           </div>
+                           <div className="space-y-2">
+                                {(Object.keys(filters) as FilterCategory[]).map(key => (
+                                    <label key={key} className="flex items-center justify-between cursor-pointer">
+                                        <span className="capitalize text-sm text-gray-700 dark:text-gray-300">{key.replace('punch', 'Punch Item').replace('safety', 'Safety Issue')}</span>
+                                        <div className="relative">
+                                            <input type="checkbox" className="sr-only" checked={filters[key]} onChange={() => handleFilterChange(key)} />
+                                            <div className={`block w-10 h-6 rounded-full transition-colors ${filters[key] ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${filters[key] ? 'transform translate-x-4' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                ))}
+                           </div>
+                        </div>
                     )}
-                </button>
-                <button onClick={triggerFileUpload} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2">
-                  <UploadIcon className="w-5 h-5" /> Change Image
-                </button>
-                <button onClick={handleClearRectangles} disabled={rectangles.length === 0 && pins.length === 0} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:bg-red-300 dark:disabled:bg-red-900 disabled:text-gray-500 dark:disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2">
-                  <TrashIcon className="w-5 h-5" /> Clear All
-                </button>
+                </div>
               </div>
-            </div>
             <div className="relative w-full flex-grow flex gap-4">
-              <div className="relative z-10">
-                <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} activeShape={activeShape} setActiveShape={setActiveShape} activePinType={activePinType} setActivePinType={setActivePinType} />
-              </div>
+               <div className="relative z-10">
+                 <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} activeShape={activeShape} setActiveShape={setActiveShape} activePinType={activePinType} setActivePinType={setActivePinType} />
+               </div>
               <div
                 ref={imageContainerRef}
                 className={`relative w-full flex-grow overflow-hidden rounded-lg select-none bg-gray-200 dark:bg-gray-900/50 ${getCursorClass()}`}
@@ -1066,17 +1138,18 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Screen-space Overlays */}
-                {pins.map(pin => {
+                {pins.filter(pin => filters[pin.type as FilterCategory]).map(pin => {
                     const screenPos = getScreenPoint(pin.x, pin.y);
                     if (!screenPos) return null;
                     const PinIcon = { photo: PhotoPinIcon, safety: SafetyPinIcon, punch: PunchPinIcon }[pin.type];
                     const pinCursor = activeTool === 'select' ? (draggingPinId === pin.id ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer';
+                    const isSelected = selectedPinId === pin.id;
 
                     return (
                         <div
                             key={pin.id}
-                            className={`absolute w-10 h-10 transform -translate-x-1/2 -translate-y-full ${pinCursor}`}
-                            style={{ left: screenPos.left, top: screenPos.top, pointerEvents: 'auto', zIndex: 15 }}
+                            className={`absolute transform -translate-x-1/2 -translate-y-full ${pinCursor}`}
+                            style={{ left: screenPos.left, top: screenPos.top, pointerEvents: 'auto', zIndex: isSelected ? 21 : 15, width: '2.75rem', height: '2.75rem' }}
                             onMouseDown={(e) => {
                                 e.stopPropagation();
                                 mouseDownRef.current = { x: e.clientX, y: e.clientY };
@@ -1091,11 +1164,14 @@ const App: React.FC = () => {
                                 if (!isClick && activeTool === 'select') return; // It was a drag
                                 
                                 setSelectedRectIds([]); // Deselect rectangles
-                                handlePinDetails(pin);
+                                if (activeTool === 'select') {
+                                  setSelectedPinId(pin.id);
+                                } else {
+                                  handlePinDetails(pin);
+                                }
                             }}
                             onMouseEnter={(e) => {
-                                if (activeTool === 'select') setHoveredPinId(pin.id);
-                                if (draggingPinId) return; // Prevent hover card during drag
+                                if (draggingPinId || selectedPinId) return; // Prevent hover card during drag or when selected
                                 if (hidePopupTimer.current) clearTimeout(hidePopupTimer.current);
                                 const pinRect = e.currentTarget.getBoundingClientRect();
                                 setHoveredItem({
@@ -1106,19 +1182,28 @@ const App: React.FC = () => {
                                 });
                             }}
                             onMouseLeave={() => {
-                                if (activeTool === 'select') setHoveredPinId(null);
                                 hidePopupTimer.current = window.setTimeout(() => setHoveredItem(null), 300);
                             }}
                         >
                             <PinIcon className="w-full h-full drop-shadow-lg" />
-                            {hoveredPinId === pin.id && activeTool === 'select' && !draggingPinId && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleDeletePin(pin.id); }}
-                                    title="Delete"
-                                    className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 shadow-lg hover:bg-red-700 transition-colors z-20"
+                            {isSelected && (
+                                <div
+                                    data-interactive-ui="true"
+                                    className="absolute flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-white"
+                                    style={{
+                                        left: '50%',
+                                        top: '-10px',
+                                        transform: 'translate(-50%, -100%)',
+                                        zIndex: 30,
+                                    }}
                                 >
-                                    <XMarkIcon className="w-4 h-4" />
-                                </button>
+                                    <button onClick={(e) => { e.stopPropagation(); handlePinDetails(pin); }} title="Details" className="p-2 rounded-md hover:bg-gray-700 transition-colors">
+                                        <InformationCircleIcon className="w-5 h-5" />
+                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeletePin(pin.id); }} title="Delete" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors">
+                                        <TrashIcon className="w-5 h-5" />
+                                    </button>
+                                </div>
                             )}
                         </div>
                     );
@@ -1141,6 +1226,7 @@ const App: React.FC = () => {
                       />
                     ))}
                     <div
+                        data-interactive-ui="true"
                         className={`absolute flex transition-opacity transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isMenuVisible ? 'opacity-100' : 'opacity-0'}`}
                         style={{
                             left: `${singleSelectionScreenRect.left + singleSelectionScreenRect.width / 2}px`,
@@ -1150,8 +1236,6 @@ const App: React.FC = () => {
                             pointerEvents: isMenuVisible ? 'auto' : 'none',
                             zIndex: 30
                         }}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => { e.stopPropagation() }}
                     >
                         <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-white">
                             <button onClick={(e) => selectedRectangle && handlePublishRect(e, selectedRectangle.id)} title="Publish" className="p-2 rounded-md hover:bg-gray-700 transition-colors">
@@ -1194,6 +1278,7 @@ const App: React.FC = () => {
                 )}
                 {isMultiSelection && multiSelectionScreenRect && (
                   <div
+                    data-interactive-ui="true"
                     className="absolute flex items-center"
                     style={{
                       left: `${multiSelectionScreenRect.left + multiSelectionScreenRect.width / 2}px`,
@@ -1201,8 +1286,6 @@ const App: React.FC = () => {
                       transform: 'translate(-50%, -100%) translateY(-10px)',
                       pointerEvents: 'auto', zIndex: 30
                     }}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => { e.stopPropagation() }}
                   >
                     <div className="flex gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-white">
                       <button onClick={handleDeleteSelected} title="Delete Selected" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors"><TrashIcon className="w-5 h-5" /></button>
@@ -1263,7 +1346,9 @@ const App: React.FC = () => {
                     if (!screenRect) return null;
                     let tagCount = 0;
 
-                    const renderTag = (type: 'rfi' | 'submittal' | 'punch' | 'drawing' | 'photo', item: any, text: string) => {
+                    const renderTag = (type: RectangleTagType, item: any, text: string) => {
+                        if (!filters[type]) return null;
+                        
                         const tagColorClasses = {
                             rfi: 'bg-blue-600/85 hover:bg-blue-500/85',
                             submittal: 'bg-green-600/85 hover:bg-green-500/85',
@@ -1329,6 +1414,20 @@ const App: React.FC = () => {
                     <button onClick={() => handleZoom('out')} title="Zoom Out" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><MagnifyingGlassMinusIcon className="w-5 h-5"/></button>
                     <button onClick={() => handleZoom('reset')} title="Reset View" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><ArrowsPointingOutIcon className="w-5 h-5"/></button>
                 </div>
+                {/* Theme Toggle */}
+                 <div className="absolute bottom-4 left-4 flex flex-col gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg">
+                    <button
+                        onClick={handleThemeToggle}
+                        className="p-2 rounded-md transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-white"
+                        title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+                    >
+                        {theme === 'dark' ? (
+                            <SunIcon className="w-5 h-5" />
+                        ) : (
+                            <MoonIcon className="w-5 h-5" />
+                        )}
+                    </button>
+                 </div>
               </div>
             </div>
           </div>
@@ -1336,7 +1435,7 @@ const App: React.FC = () => {
       </main>
 
       {/* Item Hover Popup */}
-      {hoveredItem && !draggingPinId && (() => {
+      {hoveredItem && !draggingPinId && !selectedPinId && (() => {
         let content = null;
     
         switch (hoveredItem.type) {
