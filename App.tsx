@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Rectangle, RfiData } from './types';
-import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon } from './components/Icons';
+import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br';
@@ -48,10 +48,32 @@ const App: React.FC = () => {
   const [isRfiEditMode, setIsRfiEditMode] = useState(false);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [hoveredRfi, setHoveredRfi] = useState<HoveredRfiInfo | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hidePopupTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+    setTheme(initialTheme);
+  }, []);
+  
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [theme]);
+
+  const handleThemeToggle = () => {
+    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -520,15 +542,15 @@ const App: React.FC = () => {
   let marqueeScreenRect = marqueeRect ? getScreenRect(normalizeRect(marqueeRect)) : null;
 
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col items-stretch p-4 overflow-hidden">
+    <div className="h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white flex flex-col items-stretch p-4 overflow-hidden">
       {/* Moved file input here to persist it across renders */}
       <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" ref={fileInputRef} />
-      <main className="w-full flex-grow flex flex-col items-center bg-gray-800 rounded-2xl shadow-2xl shadow-cyan-500/10 p-2">
+      <main className="w-full flex-grow flex flex-col items-center bg-white dark:bg-gray-800 rounded-2xl shadow-2xl shadow-cyan-500/10 p-2">
         {!imageSrc ? (
-          <div className="flex flex-col items-center justify-center h-full w-full border-4 border-dashed border-gray-600 rounded-xl p-8 text-center">
-            <UploadIcon className="w-24 h-24 text-gray-500 mb-4" />
+          <div className="flex flex-col items-center justify-center h-full w-full border-4 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center">
+            <UploadIcon className="w-24 h-24 text-gray-400 dark:text-gray-500 mb-4" />
             <h2 className="text-2xl font-semibold mb-2">Upload Your Blueprint</h2>
-            <p className="text-gray-400 mb-6 max-w-md">Select an image file to start highlighting.</p>
+            <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md">Select an image file to start highlighting.</p>
             <button
               onClick={triggerFileUpload}
               className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
@@ -539,11 +561,22 @@ const App: React.FC = () => {
         ) : (
           <div className="w-full h-full flex flex-col">
             <div className="flex justify-end items-center mb-2 flex-wrap gap-2">
-              <div className="flex gap-4">
-                <button onClick={triggerFileUpload} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2">
+              <div className="flex items-center gap-4">
+                 <button
+                    onClick={handleThemeToggle}
+                    className="p-2 rounded-lg transition-colors duration-200 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white"
+                    title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+                >
+                    {theme === 'dark' ? (
+                        <SunIcon className="w-5 h-5" />
+                    ) : (
+                        <MoonIcon className="w-5 h-5" />
+                    )}
+                </button>
+                <button onClick={triggerFileUpload} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2">
                   <UploadIcon className="w-5 h-5" /> Change Image
                 </button>
-                <button onClick={handleClearRectangles} disabled={rectangles.length === 0} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:bg-red-900 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2">
+                <button onClick={handleClearRectangles} disabled={rectangles.length === 0} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:bg-red-300 dark:disabled:bg-red-900 disabled:text-gray-500 dark:disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-2">
                   <TrashIcon className="w-5 h-5" /> Clear All
                 </button>
               </div>
@@ -552,7 +585,7 @@ const App: React.FC = () => {
               <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} activeShape={activeShape} setActiveShape={setActiveShape} />
               <div
                 ref={imageContainerRef}
-                className={`relative w-full flex-grow overflow-hidden rounded-lg select-none bg-gray-900/50 ${getCursorClass()}`}
+                className={`relative w-full flex-grow overflow-hidden rounded-lg select-none bg-gray-200 dark:bg-gray-900/50 ${getCursorClass()}`}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -573,7 +606,7 @@ const App: React.FC = () => {
                     return (
                       <div
                         key={rect.id}
-                        className={`absolute ${selectedRectIds.includes(rect.id) ? 'border-4 border-red-400' : 'border-4 border-red-500'} bg-white/5`}
+                        className={`absolute ${selectedRectIds.includes(rect.id) ? 'border-4 border-red-400' : 'border-4 border-red-500'} bg-black/5 dark:bg-white/5`}
                         style={{
                           left: `${normalized.x}%`,
                           top: `${normalized.y}%`,
@@ -592,7 +625,7 @@ const App: React.FC = () => {
                     {(['tl', 'tr', 'bl', 'br'] as ResizeHandle[]).map(handle => (
                       <div
                         key={handle}
-                        className="absolute w-3.5 h-3.5 bg-red-400 border-2 border-gray-900 rounded-full"
+                        className="absolute w-3.5 h-3.5 bg-red-400 border-2 border-white dark:border-gray-900 rounded-full"
                         style={{
                           top: handle.includes('t') ? singleSelectionScreenRect.top - 8 : singleSelectionScreenRect.top + singleSelectionScreenRect.height - 8,
                           left: handle.includes('l') ? singleSelectionScreenRect.left - 8 : singleSelectionScreenRect.left + singleSelectionScreenRect.width - 8,
@@ -616,21 +649,21 @@ const App: React.FC = () => {
                       onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => { e.stopPropagation() }}
                     >
-                      <div className="flex gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg">
-                        <button onClick={(e) => selectedRectangle && handlePublishRect(e, selectedRectangle.id)} title="Publish" className="p-2 rounded-md hover:bg-gray-700 transition-colors">
-                          <ArrowUpTrayIcon className="w-5 h-5 text-white" />
+                      <div className="flex gap-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-gray-800 dark:text-white">
+                        <button onClick={(e) => selectedRectangle && handlePublishRect(e, selectedRectangle.id)} title="Publish" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                          <ArrowUpTrayIcon className="w-5 h-5" />
                         </button>
-                        <button onClick={(e) => selectedRectangle && handleLinkRect(e, selectedRectangle.id)} title="Link" className={`p-2 rounded-md transition-colors ${linkMenuRectId === selectedRectangle?.id ? 'bg-cyan-600' : 'hover:bg-gray-700'}`}>
-                          <LinkIcon className="w-5 h-5 text-white" />
+                        <button onClick={(e) => selectedRectangle && handleLinkRect(e, selectedRectangle.id)} title="Link" className={`p-2 rounded-md transition-colors ${linkMenuRectId === selectedRectangle?.id ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                          <LinkIcon className="w-5 h-5" />
                         </button>
-                        <button onClick={handleDeleteSelected} title="Delete" className="p-2 rounded-md hover:bg-red-500 transition-colors">
-                          <TrashIcon className="w-5 h-5 text-white" />
+                        <button onClick={handleDeleteSelected} title="Delete" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors">
+                          <TrashIcon className="w-5 h-5" />
                         </button>
                       </div>
                       {linkMenuRectId === selectedRectangle?.id && (
-                        <div className="flex gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-sm">
+                        <div className="flex gap-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-sm">
                           {(['RFI', 'Submittal', 'Punch', 'Photo']).map(type => (
-                            <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors">{type}</button>
+                            <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-gray-800 dark:text-white rounded-md hover:bg-cyan-600 hover:text-white transition-colors">{type}</button>
                           ))}
                         </div>
                       )}
@@ -649,8 +682,8 @@ const App: React.FC = () => {
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => { e.stopPropagation() }}
                   >
-                    <div className="flex gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg">
-                      <button onClick={handleDeleteSelected} title="Delete Selected" className="p-2 rounded-md hover:bg-red-500 transition-colors"><TrashIcon className="w-5 h-5 text-white" /></button>
+                    <div className="flex gap-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-gray-800 dark:text-white">
+                      <button onClick={handleDeleteSelected} title="Delete Selected" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors"><TrashIcon className="w-5 h-5" /></button>
                     </div>
                   </div>
                 )}
@@ -704,10 +737,10 @@ const App: React.FC = () => {
                 
 
                 {/* Zoom Controls */}
-                <div className="absolute bottom-4 right-4 flex flex-col gap-2 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg">
-                    <button onClick={() => handleZoom('in')} title="Zoom In" className="p-2 rounded-md hover:bg-gray-700 transition-colors"><MagnifyingGlassPlusIcon className="w-5 h-5 text-white"/></button>
-                    <button onClick={() => handleZoom('out')} title="Zoom Out" className="p-2 rounded-md hover:bg-gray-700 transition-colors"><MagnifyingGlassMinusIcon className="w-5 h-5 text-white"/></button>
-                    <button onClick={() => handleZoom('reset')} title="Reset View" className="p-2 rounded-md hover:bg-gray-700 transition-colors"><ArrowsPointingOutIcon className="w-5 h-5 text-white"/></button>
+                <div className="absolute bottom-4 right-4 flex flex-col gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-gray-800 dark:text-white">
+                    <button onClick={() => handleZoom('in')} title="Zoom In" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><MagnifyingGlassPlusIcon className="w-5 h-5"/></button>
+                    <button onClick={() => handleZoom('out')} title="Zoom Out" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><MagnifyingGlassMinusIcon className="w-5 h-5"/></button>
+                    <button onClick={() => handleZoom('reset')} title="Reset View" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><ArrowsPointingOutIcon className="w-5 h-5"/></button>
                 </div>
               </div>
             </div>
@@ -723,7 +756,7 @@ const App: React.FC = () => {
   
           return (
               <div
-                  className="absolute bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-xl z-[60] w-64"
+                  className="absolute bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-xl z-[60] w-64"
                   style={{
                       top: `${hoveredRfi.position.top}px`,
                       left: `${hoveredRfi.position.left + 10}px`,
@@ -739,9 +772,9 @@ const App: React.FC = () => {
                   }}
               >
                   <h4 className="font-bold text-cyan-400 mb-2 truncate">RFI-{rfi.id}: {rfi.title}</h4>
-                  <p className="text-sm text-gray-300 mb-1"><span className="font-semibold text-gray-400">Type:</span> {rfi.type}</p>
-                  <div className="text-sm text-gray-300 mb-3 max-h-24 overflow-y-auto">
-                      <span className="font-semibold text-gray-400">Question:</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Type:</span> {rfi.type}</p>
+                  <div className="text-sm text-gray-600 dark:text-gray-300 mb-3 max-h-24 overflow-y-auto">
+                      <span className="font-semibold text-gray-500 dark:text-gray-400">Question:</span>
                       <p className="whitespace-pre-wrap break-words">{rfi.question}</p>
                   </div>
                   <a
@@ -757,22 +790,22 @@ const App: React.FC = () => {
       })()}
       
       {/* RFI Side Panel */}
-      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isRfiPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isRfiPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-6 flex flex-col h-full">
               <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-white">{isRfiEditMode ? 'Edit RFI' : 'Create RFI Draft'}</h2>
-                  <button onClick={handleRfiCancel} className="p-2 rounded-full hover:bg-gray-700 transition-colors">
-                      <XMarkIcon className="w-6 h-6 text-gray-400" />
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{isRfiEditMode ? 'Edit RFI' : 'Create RFI Draft'}</h2>
+                  <button onClick={handleRfiCancel} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                      <XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" />
                   </button>
               </div>
               <form onSubmit={handleRfiSubmit} className="flex flex-col flex-grow">
                   <div className="mb-4">
-                      <label htmlFor="rfi-title" className="block text-sm font-medium text-gray-300 mb-1">RFI Title</label>
-                      <input type="text" name="title" id="rfi-title" value={rfiFormData.title} onChange={handleRfiFormChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-cyan-500 focus:border-cyan-500" />
+                      <label htmlFor="rfi-title" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">RFI Title</label>
+                      <input type="text" name="title" id="rfi-title" value={rfiFormData.title} onChange={handleRfiFormChange} required className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white focus:ring-cyan-500 focus:border-cyan-500" />
                   </div>
                   <div className="mb-4">
-                      <label htmlFor="rfi-type" className="block text-sm font-medium text-gray-300 mb-1">RFI Type</label>
-                      <select name="type" id="rfi-type" value={rfiFormData.type} onChange={handleRfiFormChange} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-cyan-500 focus:border-cyan-500">
+                      <label htmlFor="rfi-type" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">RFI Type</label>
+                      <select name="type" id="rfi-type" value={rfiFormData.type} onChange={handleRfiFormChange} className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white focus:ring-cyan-500 focus:border-cyan-500">
                           <option>General Inquiry</option>
                           <option>Design Clarification</option>
                           <option>Material Substitution</option>
@@ -780,17 +813,17 @@ const App: React.FC = () => {
                       </select>
                   </div>
                   <div className="mb-4 flex-grow flex flex-col">
-                      <label htmlFor="rfi-question" className="block text-sm font-medium text-gray-300 mb-1">Question</label>
-                      <textarea name="question" id="rfi-question" value={rfiFormData.question} onChange={handleRfiFormChange} required rows={6} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white flex-grow resize-none focus:ring-cyan-500 focus:border-cyan-500"></textarea>
+                      <label htmlFor="rfi-question" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Question</label>
+                      <textarea name="question" id="rfi-question" value={rfiFormData.question} onChange={handleRfiFormChange} required rows={6} className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white flex-grow resize-none focus:ring-cyan-500 focus:border-cyan-500"></textarea>
                   </div>
                   <div className="mb-4">
-                      <p className="block text-sm font-medium text-gray-300 mb-1">Attachments / Linked Items</p>
-                      <div className="w-full bg-gray-700 border border-dashed border-gray-600 rounded-md p-4 text-center text-gray-400">
+                      <p className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Attachments / Linked Items</p>
+                      <div className="w-full bg-gray-100 dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600 rounded-md p-4 text-center text-gray-500 dark:text-gray-400">
                           <p>Attachments can be added after draft creation.</p>
                       </div>
                   </div>
-                  <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-700">
-                      <button type="button" onClick={handleRfiCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Cancel</button>
+                  <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <button type="button" onClick={handleRfiCancel} className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors">Cancel</button>
                       <button type="submit" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">{isRfiEditMode ? 'Save Changes' : 'Create Draft'}</button>
                   </div>
               </form>

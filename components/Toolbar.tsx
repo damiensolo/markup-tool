@@ -30,7 +30,7 @@ const ToolButton = ({
   <button
     onClick={onClick}
     className={`flex flex-col items-center justify-center w-full p-2 rounded-lg transition-colors duration-200 ${
-      isActive ? 'bg-cyan-600' : 'hover:bg-gray-600'
+      isActive ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-600'
     }`}
     title={label}
   >
@@ -89,7 +89,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
 
   return (
     <div className="relative">
-      <div className="flex flex-col gap-1 bg-gray-700 p-2 rounded-xl shadow-lg">
+      <div className="flex flex-col gap-1 bg-gray-100 dark:bg-gray-700 p-2 rounded-xl shadow-lg">
         {tools.map((tool, index) => (
             <React.Fragment key={tool.id}>
                 <ToolButton
@@ -99,7 +99,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
                     onClick={() => handleToolClick(tool.id as ActiveTool)}
                     hasSubmenu={tool.hasSubmenu}
                 />
-                {(index === 0 || index === 2 || index === 7) && <hr className="border-gray-500 my-1" />}
+                {(index === 0 || index === 2 || index === 7) && <hr className="border-gray-300 dark:border-gray-500 my-1" />}
             </React.Fragment>
         ))}
       </div>
@@ -107,14 +107,14 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, setActiveTool, activeShap
       {isShapeMenuOpen && (
         <div
             ref={shapeMenuRef}
-            className="absolute left-full top-1/3 transform -translate-y-1/3 ml-2 flex gap-1 bg-gray-700 p-2 rounded-xl shadow-lg"
+            className="absolute left-full top-1/3 transform -translate-y-1/3 ml-2 flex gap-1 bg-gray-100 dark:bg-gray-700 p-2 rounded-xl shadow-lg"
         >
             {shapeTools.map(shape => (
                  <button
                     key={shape.id}
                     onClick={() => handleShapeClick(shape.id as ActiveShape)}
                     className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors duration-200 ${
-                        activeShape === shape.id && activeTool === 'shape' ? 'bg-cyan-600' : 'hover:bg-gray-600'
+                        activeShape === shape.id && activeTool === 'shape' ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
                     title={shape.label}
                 >
