@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Rectangle, RfiData } from './types';
+import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData } from './types';
 import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
@@ -20,14 +20,45 @@ interface InteractionState {
   initialTransform?: ViewTransform;
 }
 
-interface HoveredRfiInfo {
+interface HoveredItemInfo {
+  type: 'rfi' | 'submittal' | 'punch' | 'drawing';
   rectId: string;
-  rfiId: number;
+  itemId: number | string;
   position: { top: number; left: number };
+}
+
+interface LinkModalConfig {
+    type: 'rfi' | 'submittal' | 'punch' | 'drawing';
+    title: string;
+    items: any[];
+    displayFields: { key: string; label?: string }[];
+    searchFields: string[];
 }
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
+
+const mockSubmittals: SubmittalData[] = [
+    { id: 'SUB-001', title: 'Structural Steel Shop Drawings', specSection: '05 12 00', status: 'In Review' },
+    { id: 'SUB-002', title: 'Concrete Mix Design', specSection: '03 30 00', status: 'Open' },
+    { id: 'SUB-003', title: 'HVAC Unit Data Sheets', specSection: '23 73 00', status: 'Closed' },
+    { id: 'SUB-004', title: 'Glazing Samples', specSection: '08 80 00', status: 'In Review' },
+    { id: 'SUB-005', title: 'Fireproofing Material Certificate', specSection: '07 81 00', status: 'Open' },
+];
+  
+const mockPunches: PunchData[] = [
+    { id: 'PUNCH-101', title: 'Drywall crack in Corridor A', status: 'Open', assignee: 'John Doe' },
+    { id: 'PUNCH-102', title: 'Incorrect paint color in Room 203', status: 'Ready for Review', assignee: 'Jane Smith' },
+    { id: 'PUNCH-103', title: 'Missing light fixture in Lobby', status: 'Closed', assignee: 'John Doe' },
+    { id: 'PUNCH-104', title: 'Leaky faucet in Restroom 1B', status: 'Open', assignee: 'Mike Ross' },
+    { id: 'PUNCH-105', title: 'Damaged floor tile near entrance', status: 'Ready for Review', assignee: 'Jane Smith' },
+];
+
+const mockDrawings: DrawingData[] = [
+    { id: 'A-3.2', title: 'Floor Plan - Level 3', thumbnailUrl: 'https://images.pexels.com/photos/1105766/pexels-photo-1105766.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' },
+    { id: 'E-1.1', title: 'Electrical Schematic - Panel A', thumbnailUrl: 'https://images.pexels.com/photos/271795/pexels-photo-271795.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' },
+    { id: 'M-5.0', title: 'Mechanical HVAC Details', thumbnailUrl: 'https://images.pexels.com/photos/259962/pexels-photo-259962.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop' },
+];
 
 const App: React.FC = () => {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -47,8 +78,13 @@ const App: React.FC = () => {
   const [rfiFormData, setRfiFormData] = useState({ title: '', type: 'General Inquiry', question: '' });
   const [isRfiEditMode, setIsRfiEditMode] = useState(false);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
-  const [hoveredRfi, setHoveredRfi] = useState<HoveredRfiInfo | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<HoveredItemInfo | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkModalConfig, setLinkModalConfig] = useState<LinkModalConfig | null>(null);
+  const [linkTargetRectId, setLinkTargetRectId] = useState<string | null>(null);
+  const [openLinkSubmenu, setOpenLinkSubmenu] = useState<string | null>(null);
 
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -436,14 +472,97 @@ const App: React.FC = () => {
     setLinkMenuRectId(null);
   };
 
-  const handleSubmenuLink = (e: React.MouseEvent, type: string, id: string) => {
+  const handleSubmenuLink = (e: React.MouseEvent, type: string, rectId: string) => {
     e.stopPropagation();
-    if (type === 'RFI') {
-      handleOpenRfiPanel(id, null);
-    } else {
-      alert(`Linking ${type} for rectangle ${id}`);
-      setLinkMenuRectId(null);
+    setLinkTargetRectId(rectId);
+    setLinkMenuRectId(null);
+
+    switch (type) {
+        case 'New RFI':
+            handleOpenRfiPanel(rectId, null);
+            break;
+        case 'Link RFI':
+            const allRfis = rectangles.flatMap(r => r.rfi ? r.rfi.map(rfi => ({...rfi, id: rfi.id, title: `RFI-${rfi.id}: ${rfi.title}`})) : []);
+            setLinkModalConfig({
+                type: 'rfi',
+                title: 'Link to an Existing RFI',
+                items: allRfis,
+                displayFields: [{ key: 'title' }],
+                searchFields: ['title', 'question'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Submittal':
+            setLinkModalConfig({
+                type: 'submittal',
+                title: 'Link to a Submittal',
+                items: mockSubmittals,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title', 'specSection'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Punch':
+            setLinkModalConfig({
+                type: 'punch',
+                title: 'Link to a Punch List Item',
+                items: mockPunches,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title', 'assignee'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        case 'Link Drawing':
+            setLinkModalConfig({
+                type: 'drawing',
+                title: 'Link to a Drawing',
+                items: mockDrawings,
+                displayFields: [{ key: 'id' }, { key: 'title' }],
+                searchFields: ['id', 'title'],
+            });
+            setIsLinkModalOpen(true);
+            break;
+        default:
+            alert(`Linking ${type} for rectangle ${rectId}`);
+            break;
     }
+  };
+
+  const handleSelectLinkItem = (item: any) => {
+    if (!linkTargetRectId || !linkModalConfig) return;
+
+    setRectangles(prevRects => prevRects.map(rect => {
+        if (rect.id === linkTargetRectId) {
+            const newRect = { ...rect };
+            switch (linkModalConfig.type) {
+                case 'rfi':
+                    if (!newRect.rfi) newRect.rfi = [];
+                    if (!newRect.rfi.some(r => r.id === item.id)) {
+                        const originalRfi = rectangles.flatMap(r => r.rfi || []).find(rfi => rfi.id === item.id);
+                        if(originalRfi) newRect.rfi.push(originalRfi);
+                    }
+                    break;
+                case 'submittal':
+                    if (!newRect.submittals) newRect.submittals = [];
+                    if (!newRect.submittals.some(s => s.id === item.id)) newRect.submittals.push(item);
+                    break;
+                case 'punch':
+                    if (!newRect.punches) newRect.punches = [];
+                    if (!newRect.punches.some(p => p.id === item.id)) newRect.punches.push(item);
+                    break;
+                case 'drawing':
+                    if (!newRect.drawings) newRect.drawings = [];
+                    if (!newRect.drawings.some(d => d.id === item.id)) newRect.drawings.push(item);
+                    break;
+            }
+            return newRect;
+        }
+        return rect;
+    }));
+
+    setIsLinkModalOpen(false);
+    setLinkModalConfig(null);
+    setLinkTargetRectId(null);
   };
 
   const handleClearRectangles = () => {
@@ -637,42 +756,60 @@ const App: React.FC = () => {
                       />
                     ))}
                     <div
-                      className={`absolute flex flex-col items-center gap-1.5 transition-opacity transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isMenuVisible ? 'opacity-100' : 'opacity-0'}`}
-                      style={{
-                        left: `${singleSelectionScreenRect.left + singleSelectionScreenRect.width / 2}px`,
-                        top: `${singleSelectionScreenRect.top}px`,
-                        transform: `translate(-50%, -100%) translateY(-10px) scale(${isMenuVisible ? 1 : 0.9})`,
-                        transformOrigin: 'bottom center',
-                        pointerEvents: isMenuVisible ? 'auto' : 'none',
-                        zIndex: 30
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => { e.stopPropagation() }}
+                        className={`absolute flex transition-opacity transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isMenuVisible ? 'opacity-100' : 'opacity-0'}`}
+                        style={{
+                            left: `${singleSelectionScreenRect.left + singleSelectionScreenRect.width / 2}px`,
+                            top: `${singleSelectionScreenRect.top}px`,
+                            transform: `translate(-50%, -100%) translateY(-10px) scale(${isMenuVisible ? 1 : 0.9})`,
+                            transformOrigin: 'bottom center',
+                            pointerEvents: isMenuVisible ? 'auto' : 'none',
+                            zIndex: 30
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => { e.stopPropagation() }}
                     >
-                      <div className="flex gap-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-gray-800 dark:text-white">
-                        <button onClick={(e) => selectedRectangle && handlePublishRect(e, selectedRectangle.id)} title="Publish" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                          <ArrowUpTrayIcon className="w-5 h-5" />
-                        </button>
-                        <button onClick={(e) => selectedRectangle && handleLinkRect(e, selectedRectangle.id)} title="Link" className={`p-2 rounded-md transition-colors ${linkMenuRectId === selectedRectangle?.id ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
-                          <LinkIcon className="w-5 h-5" />
-                        </button>
-                        <button onClick={handleDeleteSelected} title="Delete" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors">
-                          <TrashIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-                      {linkMenuRectId === selectedRectangle?.id && (
-                        <div className="flex gap-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-sm">
-                          {(['RFI', 'Submittal', 'Punch', 'Photo']).map(type => (
-                            <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-gray-800 dark:text-white rounded-md hover:bg-cyan-600 hover:text-white transition-colors">{type}</button>
-                          ))}
+                        <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-white">
+                            <button onClick={(e) => selectedRectangle && handlePublishRect(e, selectedRectangle.id)} title="Publish" className="p-2 rounded-md hover:bg-gray-700 transition-colors">
+                                <ArrowUpTrayIcon className="w-5 h-5" />
+                            </button>
+                            
+                            <div className="relative">
+                                <button onClick={(e) => selectedRectangle && handleLinkRect(e, selectedRectangle.id)} title="Link" className={`p-2 rounded-md transition-colors ${linkMenuRectId === selectedRectangle?.id ? 'bg-cyan-600 text-white' : 'hover:bg-gray-700'}`}>
+                                    <LinkIcon className="w-5 h-5" />
+                                </button>
+                                {linkMenuRectId === selectedRectangle?.id && (
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-max" onMouseLeave={() => setOpenLinkSubmenu(null)}>
+                                    <div className="flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-sm">
+                                        <div className="relative" onMouseEnter={() => setOpenLinkSubmenu('rfi')}>
+                                            <div className="flex justify-between items-center px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left cursor-default">
+                                                <span>RFI</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 ml-4"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                                            </div>
+                                            {openLinkSubmenu === 'rfi' && (
+                                                <div className="absolute left-full top-0 ml-1 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-sm w-max">
+                                                    <button onClick={(e) => selectedRectangle && handleSubmenuLink(e, 'New RFI', selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left whitespace-nowrap">New RFI</button>
+                                                    <button onClick={(e) => selectedRectangle && handleSubmenuLink(e, 'Link RFI', selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left whitespace-nowrap">Link RFI</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {['Link Submittal', 'Link Punch', 'Link Drawing'].map(type => (
+                                            <button key={type} onClick={(e) => selectedRectangle && handleSubmenuLink(e, type, selectedRectangle.id)} className="px-3 py-1.5 text-white rounded-md hover:bg-cyan-600 transition-colors text-left">{type}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                )}
+                            </div>
+
+                            <button onClick={handleDeleteSelected} title="Delete" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors">
+                                <TrashIcon className="w-5 h-5" />
+                            </button>
                         </div>
-                      )}
                     </div>
                   </>
                 )}
                 {isMultiSelection && multiSelectionScreenRect && (
                   <div
-                    className="absolute flex flex-col items-center"
+                    className="absolute flex items-center"
                     style={{
                       left: `${multiSelectionScreenRect.left + multiSelectionScreenRect.width / 2}px`,
                       top: `${multiSelectionScreenRect.top}px`,
@@ -682,7 +819,7 @@ const App: React.FC = () => {
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => { e.stopPropagation() }}
                   >
-                    <div className="flex gap-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-gray-800 dark:text-white">
+                    <div className="flex gap-1 bg-gray-900/80 backdrop-blur-sm p-1.5 rounded-lg shadow-lg text-white">
                       <button onClick={handleDeleteSelected} title="Delete Selected" className="p-2 rounded-md hover:bg-red-500 hover:text-white transition-colors"><TrashIcon className="w-5 h-5" /></button>
                     </div>
                   </div>
@@ -694,45 +831,63 @@ const App: React.FC = () => {
                   <div className="absolute border-2 border-dashed border-blue-400 bg-blue-400/20 pointer-events-none" style={marqueeScreenRect} />
                 )}
 
-                {/* RFI Labels */}
+                {/* Item Tags */}
                 {rectangles.map(rect => {
-                    if (!rect.rfi) return null;
                     const screenRect = getScreenRect(rect);
                     if (!screenRect) return null;
-                    return rect.rfi.map((rfi, index) => (
-                        <div
-                            key={`rfi-label-${rect.id}-${rfi.id}`}
-                            className="absolute bg-blue-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-sm shadow-md cursor-pointer hover:bg-blue-500 transition-colors"
-                            style={{
-                                left: `${screenRect.left + screenRect.width + 5}px`,
-                                top: `${screenRect.top + index * 24}px`,
-                                pointerEvents: 'auto',
-                                zIndex: 25
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenRfiPanel(rect.id, rfi.id);
-                            }}
-                            onMouseEnter={(e) => {
-                                if (hidePopupTimer.current) {
-                                    clearTimeout(hidePopupTimer.current);
-                                }
-                                const tagRect = e.currentTarget.getBoundingClientRect();
-                                setHoveredRfi({
-                                    rectId: rect.id,
-                                    rfiId: rfi.id,
-                                    position: { top: tagRect.top + tagRect.height / 2, left: tagRect.right }
-                                });
-                            }}
-                            onMouseLeave={() => {
-                                hidePopupTimer.current = window.setTimeout(() => {
-                                    setHoveredRfi(null);
-                                }, 300);
-                            }}
-                        >
-                            RFI-{rfi.id}
-                        </div>
-                    ));
+                    let tagCount = 0;
+
+                    const renderTag = (type: 'rfi' | 'submittal' | 'punch' | 'drawing', item: any, text: string) => {
+                        const tagColorClasses = {
+                            rfi: 'bg-blue-600 hover:bg-blue-500',
+                            submittal: 'bg-green-600 hover:bg-green-500',
+                            punch: 'bg-orange-600 hover:bg-orange-500',
+                            drawing: 'bg-indigo-600 hover:bg-indigo-500',
+                        };
+                        const positionIndex = tagCount;
+                        tagCount++;
+
+                        return (
+                            <div
+                                key={`${type}-tag-${rect.id}-${item.id}`}
+                                className={`absolute text-white text-xs font-bold px-1.5 py-0.5 rounded-sm shadow-md cursor-pointer transition-colors ${tagColorClasses[type]}`}
+                                style={{
+                                    left: `${screenRect.left + screenRect.width + 5}px`,
+                                    top: `${screenRect.top + positionIndex * 24}px`,
+                                    pointerEvents: 'auto',
+                                    zIndex: 25
+                                }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if(type === 'rfi') handleOpenRfiPanel(rect.id, item.id);
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (hidePopupTimer.current) clearTimeout(hidePopupTimer.current);
+                                    const tagRect = e.currentTarget.getBoundingClientRect();
+                                    setHoveredItem({
+                                        type: type,
+                                        rectId: rect.id,
+                                        itemId: item.id,
+                                        position: { top: tagRect.top + tagRect.height / 2, left: tagRect.right }
+                                    });
+                                }}
+                                onMouseLeave={() => {
+                                    hidePopupTimer.current = window.setTimeout(() => setHoveredItem(null), 300);
+                                }}
+                            >
+                                {text}
+                            </div>
+                        );
+                    };
+
+                    return (
+                        <React.Fragment key={`tags-for-${rect.id}`}>
+                            {rect.rfi?.map(rfi => renderTag('rfi', rfi, `RFI-${rfi.id}`))}
+                            {rect.submittals?.map(sub => renderTag('submittal', sub, sub.id))}
+                            {rect.punches?.map(punch => renderTag('punch', punch, punch.id))}
+                            {rect.drawings?.map(drawing => renderTag('drawing', drawing, drawing.id))}
+                        </React.Fragment>
+                    );
                 })}
                 
 
@@ -748,46 +903,86 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* RFI Hover Popup */}
-      {hoveredRfi && (() => {
-          const rect = rectangles.find(r => r.id === hoveredRfi.rectId);
-          const rfi = rect?.rfi?.find(r => r.id === hoveredRfi.rfiId);
-          if (!rfi) return null;
-  
-          return (
-              <div
-                  className="absolute bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-xl z-[60] w-64"
-                  style={{
-                      top: `${hoveredRfi.position.top}px`,
-                      left: `${hoveredRfi.position.left + 10}px`,
-                      transform: 'translateY(-50%)'
-                  }}
-                  onMouseEnter={() => {
-                      if (hidePopupTimer.current) {
-                          clearTimeout(hidePopupTimer.current);
-                      }
-                  }}
-                  onMouseLeave={() => {
-                      setHoveredRfi(null);
-                  }}
-              >
-                  <h4 className="font-bold text-cyan-400 mb-2 truncate">RFI-{rfi.id}: {rfi.title}</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Type:</span> {rfi.type}</p>
-                  <div className="text-sm text-gray-600 dark:text-gray-300 mb-3 max-h-24 overflow-y-auto">
-                      <span className="font-semibold text-gray-500 dark:text-gray-400">Question:</span>
-                      <p className="whitespace-pre-wrap break-words">{rfi.question}</p>
-                  </div>
-                  <a
-                      href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/rfi/uiSFtnkKXNpn5Koz/details?tab=details"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold"
-                  >
-                      View Full RFI &rarr;
-                  </a>
-              </div>
-          );
+      {/* Item Hover Popup */}
+      {hoveredItem && (() => {
+        const rect = rectangles.find(r => r.id === hoveredItem.rectId);
+        let content = null;
+    
+        if (rect) {
+            switch (hoveredItem.type) {
+                case 'rfi':
+                    const rfi = rect.rfi?.find(r => r.id === hoveredItem.itemId);
+                    if (rfi) content = (
+                        <>
+                            <h4 className="font-bold text-cyan-400 mb-2 truncate">RFI-{rfi.id}: {rfi.title}</h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Type:</span> {rfi.type}</p>
+                            <div className="text-sm text-gray-600 dark:text-gray-300 mb-3 max-h-24 overflow-y-auto">
+                                <span className="font-semibold text-gray-500 dark:text-gray-400">Question:</span>
+                                <p className="whitespace-pre-wrap break-words">{rfi.question}</p>
+                            </div>
+                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/rfi/uiSFtnkKXNpn5Koz/details?tab=details" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full RFI &rarr;</a>
+                        </>
+                    );
+                    break;
+                case 'submittal':
+                    const submittal = rect.submittals?.find(s => s.id === hoveredItem.itemId);
+                    if (submittal) content = (
+                        <>
+                            <h4 className="font-bold text-green-400 mb-2 truncate">{submittal.id}: {submittal.title}</h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Spec Section:</span> {submittal.specSection}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {submittal.status}</p>
+                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/submittals/package/FMVmW4xEe9bcHUTp/registries/Xh6FHaQZ9Dyv6V3i/?tab=response" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Submittal &rarr;</a>
+                        </>
+                    );
+                    break;
+                case 'punch':
+                    const punch = rect.punches?.find(p => p.id === hoveredItem.itemId);
+                    if (punch) content = (
+                        <>
+                            <h4 className="font-bold text-orange-400 mb-2 truncate">{punch.id}: {punch.title}</h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1"><span className="font-semibold text-gray-500 dark:text-gray-400">Assignee:</span> {punch.assignee}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3"><span className="font-semibold text-gray-500 dark:text-gray-400">Status:</span> {punch.status}</p>
+                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/quality/punchList/H7SakWBed794KRdU/details?tab=details" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Punch Item &rarr;</a>
+                        </>
+                    );
+                    break;
+                case 'drawing':
+                    const drawing = rect.drawings?.find(d => d.id === hoveredItem.itemId);
+                    if (drawing) content = (
+                        <>
+                            <h4 className="font-bold text-indigo-400 mb-2 truncate">{drawing.id}: {drawing.title}</h4>
+                            <img src={drawing.thumbnailUrl} alt={drawing.title} className="rounded-md mb-3 w-full object-cover" />
+                            <a href="https://demo.linarc.io/projectPortal/kbUydYsp3LW2WhsQ/document/newPlans/markup/A-3.2/AHV6vNEm20250627115709/latest" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:text-cyan-400 text-sm font-semibold">View Full Drawing &rarr;</a>
+                        </>
+                    );
+                    break;
+            }
+        }
+    
+        if (!content) return null;
+    
+        return (
+            <div
+                className="absolute bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-xl z-[60] w-72"
+                style={{
+                    top: `${hoveredItem.position.top}px`,
+                    left: `${hoveredItem.position.left + 10}px`,
+                    transform: 'translateY(-50%)'
+                }}
+                onMouseEnter={() => { if (hidePopupTimer.current) clearTimeout(hidePopupTimer.current); }}
+                onMouseLeave={() => { setHoveredItem(null); }}
+            >
+                {content}
+            </div>
+        );
       })()}
+
+      <LinkModal
+        isOpen={isLinkModalOpen}
+        config={linkModalConfig}
+        onClose={() => setIsLinkModalOpen(false)}
+        onSelect={handleSelectLinkItem}
+      />
       
       {/* RFI Side Panel */}
       <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isRfiPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -831,6 +1026,73 @@ const App: React.FC = () => {
       </div>
     </div>
   );
+};
+
+interface LinkModalProps {
+    isOpen: boolean;
+    config: LinkModalConfig | null;
+    onClose: () => void;
+    onSelect: (item: any) => void;
+}
+
+const LinkModal: React.FC<LinkModalProps> = ({ isOpen, config, onClose, onSelect }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setSearchTerm('');
+        }
+    }, [isOpen]);
+
+    if (!isOpen || !config) return null;
+
+    const filteredItems = config.items.filter(item => 
+        config.searchFields.some(field => 
+            item[field]?.toString().toLowerCase().includes(searchTerm.toLowerCase())
+        )
+    );
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+            <div 
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col" 
+                onClick={e => e.stopPropagation()}
+                style={{maxHeight: '80vh'}}
+            >
+                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">{config.title}</h3>
+                        <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                          <XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" />
+                        </button>
+                    </div>
+                    <input 
+                        type="text" 
+                        placeholder="Search..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 mt-4 text-gray-900 dark:text-white focus:ring-cyan-500 focus:border-cyan-500" 
+                    />
+                </div>
+                <ul className="overflow-y-auto p-4">
+                    {filteredItems.length > 0 ? filteredItems.map(item => (
+                        <li key={item.id}>
+                            <button 
+                                onClick={() => onSelect(item)}
+                                className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                {config.displayFields.map(field => (
+                                    <span key={field.key} className="font-semibold text-gray-800 dark:text-gray-200 mr-4">{item[field.key]}</span>
+                                ))}
+                            </button>
+                        </li>
+                    )) : (
+                        <li className="p-4 text-center text-gray-500 dark:text-gray-400">No items found.</li>
+                    )}
+                </ul>
+            </div>
+        </div>
+    );
 };
 
 export default App;
