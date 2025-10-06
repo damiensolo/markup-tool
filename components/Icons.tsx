@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface IconProps {
@@ -174,5 +175,11 @@ export const PunchPinIcon: React.FC<IconProps> = ({ className }) => (
         <g transform="translate(11 8) scale(0.416)" fill="currentColor" className="text-white">
             <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 00-1.071 1.052A32.94 32.94 0 0113.4 15.182V19.5a.75.75 0 01-1.5 0v-4.318c0-.78-.31-1.53-.878-2.098S9.79 7.5 9 7.5c-.79 0-1.53.31-2.098.878S6 9.97 6 10.75v3.53c-.792.223-1.58.49-2.355.79A.75.75 0 003 15.825V18a.75.75 0 00.75.75h16.5a.75.75 0 00.75-.75v-2.175a.75.75 0 00-.355-1.007c-.775-.298-1.563-.567-2.355-.79v-3.53c0-.78-.31-1.53-.878-2.098S14.29 7.5 13.5 7.5c-.79 0-1.53.31-2.098.878s-.878 1.318-.878 2.098v4.682a32.94 32.94 0 011.437-12.896.75.75 0 00-1.052-1.07z" clipRule="evenodd" />
         </g>
+    </svg>
+);
+
+export const InformationCircleIcon: React.FC<IconProps> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
     </svg>
 );

@@ -1,11 +1,13 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Rectangle, RfiData, SubmittalData, PunchData, DrawingData, PhotoData, PhotoMarkup, Pin, SafetyIssueData } from './types';
-import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon, SafetyPinIcon, PunchPinIcon, PhotoPinIcon } from './components/Icons';
+import { UploadIcon, TrashIcon, LinkIcon, ArrowUpTrayIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon, SunIcon, MoonIcon, SafetyPinIcon, PunchPinIcon, PhotoPinIcon, InformationCircleIcon } from './components/Icons';
 import Toolbar from './components/Toolbar';
 
 type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br';
 type ActiveTool = 'select' | 'shape' | 'pen' | 'arrow' | 'text' | 'distance' | 'drawing' | 'pin';
 type ActivePinType = 'photo' | 'safety' | 'punch';
+type ActiveShape = 'cloud' | 'box' | 'ellipse';
 
 interface ViewTransform {
   scale: number;
@@ -69,9 +71,9 @@ const mockPhotos: PhotoData[] = [
 ];
 
 const mockSafetyIssues: SafetyIssueData[] = [
-    { id: 'SAFE-001', title: 'Uncovered floor opening', status: 'Open', severity: 'High' },
-    { id: 'SAFE-002', title: 'Missing guardrail on 2nd floor', status: 'In Progress', severity: 'High' },
-    { id: 'SAFE-003', title: 'Improperly stored flammable materials', status: 'Closed', severity: 'Medium' },
+    { id: 'SAFE-001', title: 'Uncovered floor opening', description: 'Large opening in the floor on the west side of Level 2, near column B-4. Needs immediate covering.', status: 'Open', severity: 'High' },
+    { id: 'SAFE-002', title: 'Missing guardrail on 2nd floor', description: 'The entire southern balcony on the second floor is missing its guardrail.', status: 'In Progress', severity: 'High' },
+    { id: 'SAFE-003', title: 'Improperly stored flammable materials', description: 'Gasoline cans and other flammable materials stored next to an active welding station.', status: 'Closed', severity: 'Medium' },
 ];
 
 const App: React.FC = () => {
@@ -82,13 +84,14 @@ const App: React.FC = () => {
   const [allPunches, setAllPunches] = useState<PunchData[]>(mockPunches);
   const [allSafetyIssues, setAllSafetyIssues] = useState<SafetyIssueData[]>(mockSafetyIssues);
   const [selectedRectIds, setSelectedRectIds] = useState<string[]>([]);
+  const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
   const [hoveredRectId, setHoveredRectId] = useState<string | null>(null);
   const [linkMenuRectId, setLinkMenuRectId] = useState<string | null>(null);
   const [currentRect, setCurrentRect] = useState<Omit<Rectangle, 'id'> | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<Omit<Rectangle, 'id'> | null>(null);
   const [interaction, setInteraction] = useState<InteractionState>({ type: 'none' });
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
-  const [activeShape, setActiveShape] = useState<'cloud' | 'box' | 'ellipse'>('box');
+  const [activeShape, setActiveShape] = useState<ActiveShape>('box');
   const [activePinType, setActivePinType] = useState<ActivePinType>('photo');
   const [viewTransform, setViewTransform] = useState<ViewTransform>({ scale: 1, translateX: 0, translateY: 0 });
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
@@ -101,7 +104,7 @@ const App: React.FC = () => {
 
   const [isSafetyPanelOpen, setIsSafetyPanelOpen] = useState(false);
   const [safetyTargetPinId, setSafetyTargetPinId] = useState<string | null>(null);
-  const [safetyFormData, setSafetyFormData] = useState<Omit<SafetyIssueData, 'id'>>({ title: '', status: 'Open', severity: 'Medium' });
+  const [safetyFormData, setSafetyFormData] = useState<Omit<SafetyIssueData, 'id'>>({ title: '', description: '', status: 'Open', severity: 'Medium' });
 
   const [isPunchPanelOpen, setIsPunchPanelOpen] = useState(false);
   const [punchTargetPinId, setPunchTargetPinId] = useState<string | null>(null);
@@ -219,7 +222,7 @@ const App: React.FC = () => {
   }, [viewTransform]);
 
   const normalizeRect = (rect: Omit<Rectangle, 'id'> | Rectangle): Rectangle => {
-    const newRect = { ...rect, id: 'id' in rect ? rect.id : '' };
+    const newRect = { ...rect, id: 'id' in rect ? rect.id : '', shape: 'shape' in rect ? rect.shape : activeShape };
     if (newRect.width < 0) {
       newRect.x = newRect.x + newRect.width;
       newRect.width = Math.abs(newRect.width);
@@ -390,7 +393,7 @@ const App: React.FC = () => {
         } else {
             setSelectedRectIds([]);
             setInteraction({ type: 'marquee', startPoint: coords });
-            setMarqueeRect({ x: coords.x, y: coords.y, width: 0, height: 0 });
+            setMarqueeRect({ x: coords.x, y: coords.y, width: 0, height: 0, shape: 'box' });
         }
       }
     } else if (activeTool === 'shape') {
@@ -405,10 +408,10 @@ const App: React.FC = () => {
         setLinkMenuRectId(null);
         setSelectedRectIds([]);
         setInteraction({ type: 'drawing', startPoint: coords });
-        setCurrentRect({ x: coords.x, y: coords.y, width: 0, height: 0 });
+        setCurrentRect({ x: coords.x, y: coords.y, width: 0, height: 0, shape: activeShape });
       }
     }
-  }, [getRelativeCoords, interaction.type, rectangles, activeTool, selectedRectIds, viewTransform, isRfiPanelOpen, handleRfiCancel, draggingPinId]);
+  }, [getRelativeCoords, interaction.type, rectangles, activeTool, activeShape, selectedRectIds, viewTransform, isRfiPanelOpen, handleRfiCancel, draggingPinId]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const coords = getRelativeCoords(event);
@@ -453,11 +456,11 @@ const App: React.FC = () => {
       case 'marquee': {
         const newWidth = coords.x - interaction.startPoint.x;
         const newHeight = coords.y - interaction.startPoint.y;
-        const rectToUpdate = { x: interaction.startPoint.x, y: interaction.startPoint.y, width: newWidth, height: newHeight };
+        const baseRect = { x: interaction.startPoint.x, y: interaction.startPoint.y, width: newWidth, height: newHeight };
         if (interaction.type === 'drawing') {
-          setCurrentRect(rectToUpdate);
+          setCurrentRect({ ...baseRect, shape: activeShape });
         } else {
-          setMarqueeRect(rectToUpdate);
+          setMarqueeRect({ ...baseRect, shape: 'box' });
         }
         break;
       }
@@ -497,7 +500,7 @@ const App: React.FC = () => {
         break;
       }
     }
-  }, [getRelativeCoords, interaction, activeTool, rectangles, draggingPinId]);
+  }, [getRelativeCoords, interaction, activeTool, rectangles, draggingPinId, activeShape]);
 
   const handleMouseUp = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const startPoint = mouseDownRef.current;
@@ -520,7 +523,7 @@ const App: React.FC = () => {
                 break;
             case 'safety':
                 setSafetyTargetPinId(null);
-                setSafetyFormData({ title: '', status: 'Open', severity: 'Medium' });
+                setSafetyFormData({ title: '', description: '', status: 'Open', severity: 'Medium' });
                 setIsSafetyPanelOpen(true);
                 break;
             case 'punch':
@@ -538,7 +541,7 @@ const App: React.FC = () => {
   
     if (interaction.type === 'drawing' && currentRect) {
       const normalized = normalizeRect(currentRect);
-      if (normalized.width > 1 && normalized.height > 1) {
+      if (Math.abs(normalized.width) > 1 && Math.abs(normalized.height) > 1) {
         const newRect = { ...normalized, id: Date.now().toString() };
         setRectangles(prev => [...prev, newRect]);
         setSelectedRectIds([newRect.id]);
@@ -740,11 +743,37 @@ const App: React.FC = () => {
     handleRfiCancel();
   };
 
+    const handlePinDetails = (pin: Pin) => {
+        if (pin.type === 'photo') {
+            setPhotoViewerConfig({ photoId: pin.linkedId, pinId: pin.id });
+            setIsPhotoViewerOpen(true);
+        } else if (pin.type === 'safety') {
+            const issue = allSafetyIssues.find(i => i.id === pin.linkedId);
+            if (issue) {
+                setSafetyFormData(issue);
+                setSafetyTargetPinId(pin.id);
+                setIsSafetyPanelOpen(true);
+            }
+        } else if (pin.type === 'punch') {
+            const punchItem = allPunches.find(p => p.id === pin.linkedId);
+            if (punchItem) {
+                setPunchFormData(punchItem);
+                setPunchTargetPinId(pin.id);
+                setPunchPanelMode('create');
+                setIsPunchPanelOpen(true);
+            }
+        }
+    };
+
+    const handleDeletePin = (pinId: string) => {
+        setPins(prev => prev.filter(p => p.id !== pinId));
+    };
+
   // Generic Panel Handlers
     const handleSafetyPanelCancel = () => {
         setIsSafetyPanelOpen(false);
         setSafetyTargetPinId(null);
-        setSafetyFormData({ title: '', status: 'Open', severity: 'Medium' });
+        setSafetyFormData({ title: '', description: '', status: 'Open', severity: 'Medium' });
         setPinTargetCoords(null);
     };
 
@@ -756,7 +785,7 @@ const App: React.FC = () => {
         setPunchSearchTerm('');
     };
 
-    const handleSafetyFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleSafetyFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         setSafetyFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
 
@@ -909,8 +938,19 @@ const App: React.FC = () => {
   
   let singleSelectionScreenRect = selectedRectangle ? getScreenRect(selectedRectangle) : null;
   let multiSelectionScreenRect = lastSelectedRectangle ? getScreenRect(lastSelectedRectangle) : null;
-  let currentRectScreenRect = currentRect ? getScreenRect(currentRect) : null;
   let marqueeScreenRect = marqueeRect ? getScreenRect(normalizeRect(marqueeRect)) : null;
+
+  const generateCloudPath = (w: number, h: number) => {
+    if (w <= 0 || h <= 0) return '';
+    return `M ${w * 0.37} ${h * 0.95} 
+            A ${w * 0.19} ${h * 0.19} 0 0 1 ${w * 0.21} ${h * 0.75}
+            A ${w * 0.25} ${h * 0.25} 0 0 1 ${w * 0.25} ${h * 0.35}
+            A ${w * 0.22} ${h * 0.22} 0 0 1 ${w * 0.5} ${h * 0.2}
+            A ${w * 0.25} ${h * 0.25} 0 0 1 ${w * 0.75} ${h * 0.3}
+            A ${w * 0.20} ${h * 0.20} 0 0 1 ${w * 0.79} ${h * 0.75}
+            A ${w * 0.19} ${h * 0.19} 0 0 1 ${w * 0.63} ${h * 0.95} 
+            Z`;
+  };
 
   return (
     <div className="h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white flex flex-col items-stretch p-4 overflow-hidden">
@@ -976,18 +1016,51 @@ const App: React.FC = () => {
                   <img src={imageSrc} alt="Blueprint" className="w-full h-full object-contain pointer-events-none" />
                   {rectangles.map((rect) => {
                     const normalized = normalizeRect(rect);
+                    const isSelected = selectedRectIds.includes(rect.id);
+                    const strokeColor = isSelected ? '#f87171' : '#ef4444'; // red-400 : red-500
+                    
+                    const shapeProps = {
+                      stroke: strokeColor,
+                      strokeWidth: 4 / viewTransform.scale, // Make stroke width consistent when zooming
+                      fill: "rgba(0,0,0,0.05)",
+                      vectorEffect: "non-scaling-stroke",
+                    };
+
                     return (
-                      <div
-                        key={rect.id}
-                        className={`absolute ${selectedRectIds.includes(rect.id) ? 'border-4 border-red-400' : 'border-4 border-red-500'} bg-black/5 dark:bg-white/5`}
-                        style={{
-                          left: `${normalized.x}%`,
-                          top: `${normalized.y}%`,
-                          width: `${normalized.width}%`,
-                          height: `${normalized.height}%`,
-                          pointerEvents: 'none',
-                        }}
-                      />
+                        <div
+                            key={rect.id}
+                            className={`absolute`}
+                            style={{
+                                left: `${normalized.x}%`,
+                                top: `${normalized.y}%`,
+                                width: `${normalized.width}%`,
+                                height: `${normalized.height}%`,
+                                pointerEvents: 'none',
+                            }}
+                        >
+                            {rect.shape === 'box' && (
+                                <div
+                                    className={`w-full h-full ${isSelected ? 'border-4 border-red-400' : 'border-4 border-red-500'} bg-black/5 dark:bg-white/5`}
+                                />
+                            )}
+                            {(rect.shape === 'ellipse' || rect.shape === 'cloud') && (
+                                <svg width="100%" height="100%" viewBox={`0 0 ${normalized.width} ${normalized.height}`} preserveAspectRatio="none" className="overflow-visible">
+                                    {rect.shape === 'ellipse' && (
+                                        <ellipse
+                                            cx={normalized.width / 2} cy={normalized.height / 2}
+                                            rx={normalized.width / 2} ry={normalized.height / 2}
+                                            {...shapeProps}
+                                        />
+                                    )}
+                                    {rect.shape === 'cloud' && (
+                                        <path
+                                            d={generateCloudPath(normalized.width, normalized.height)}
+                                            {...shapeProps}
+                                        />
+                                    )}
+                                </svg>
+                            )}
+                        </div>
                     );
                   })}
                 </div>
@@ -1002,7 +1075,7 @@ const App: React.FC = () => {
                     return (
                         <div
                             key={pin.id}
-                            className={`absolute w-8 h-8 transform -translate-x-1/2 -translate-y-full ${pinCursor}`}
+                            className={`absolute w-10 h-10 transform -translate-x-1/2 -translate-y-full ${pinCursor}`}
                             style={{ left: screenPos.left, top: screenPos.top, pointerEvents: 'auto', zIndex: 15 }}
                             onMouseDown={(e) => {
                                 e.stopPropagation();
@@ -1011,32 +1084,18 @@ const App: React.FC = () => {
                                     setDraggingPinId(pin.id);
                                 }
                             }}
-                            onClick={(e) => {
+                             onClick={(e) => {
+                                e.stopPropagation();
                                 const startPoint = mouseDownRef.current;
                                 const isClick = startPoint && Math.abs(e.clientX - startPoint.x) < 5 && Math.abs(e.clientY - startPoint.y) < 5;
                                 if (!isClick && activeTool === 'select') return; // It was a drag
-
-                                if (pin.type === 'photo') {
-                                    setPhotoViewerConfig({ photoId: pin.linkedId, pinId: pin.id });
-                                    setIsPhotoViewerOpen(true);
-                                } else if (pin.type === 'safety') {
-                                    const issue = allSafetyIssues.find(i => i.id === pin.linkedId);
-                                    if(issue) {
-                                        setSafetyFormData(issue);
-                                        setSafetyTargetPinId(pin.id);
-                                        setIsSafetyPanelOpen(true);
-                                    }
-                                } else if (pin.type === 'punch') {
-                                    const punchItem = allPunches.find(p => p.id === pin.linkedId);
-                                    if(punchItem) {
-                                        setPunchFormData(punchItem);
-                                        setPunchTargetPinId(pin.id);
-                                        setPunchPanelMode('create');
-                                        setIsPunchPanelOpen(true);
-                                    }
-                                }
+                                
+                                setSelectedRectIds([]); // Deselect rectangles
+                                handlePinDetails(pin);
                             }}
                             onMouseEnter={(e) => {
+                                if (activeTool === 'select') setHoveredPinId(pin.id);
+                                if (draggingPinId) return; // Prevent hover card during drag
                                 if (hidePopupTimer.current) clearTimeout(hidePopupTimer.current);
                                 const pinRect = e.currentTarget.getBoundingClientRect();
                                 setHoveredItem({
@@ -1047,10 +1106,20 @@ const App: React.FC = () => {
                                 });
                             }}
                             onMouseLeave={() => {
+                                if (activeTool === 'select') setHoveredPinId(null);
                                 hidePopupTimer.current = window.setTimeout(() => setHoveredItem(null), 300);
                             }}
                         >
                             <PinIcon className="w-full h-full drop-shadow-lg" />
+                            {hoveredPinId === pin.id && activeTool === 'select' && !draggingPinId && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleDeletePin(pin.id); }}
+                                    title="Delete"
+                                    className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 shadow-lg hover:bg-red-700 transition-colors z-20"
+                                >
+                                    <XMarkIcon className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                     );
                 })}
@@ -1140,9 +1209,50 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {currentRectScreenRect && (
-                  <div className="absolute border-2 border-dashed border-red-400 bg-red-400/20 pointer-events-none" style={currentRectScreenRect} />
-                )}
+                {currentRect && (() => {
+                  const normalized = normalizeRect(currentRect);
+                  const screenRect = getScreenRect(normalized);
+
+                  if (normalized.shape === 'box') {
+                    return <div className="absolute border-2 border-dashed border-red-400 bg-red-400/20 pointer-events-none" style={screenRect} />;
+                  }
+
+                  const svgProps = {
+                    stroke: '#f87171', // red-400
+                    strokeWidth: 2 / viewTransform.scale,
+                    fill: "rgba(248, 113, 113, 0.2)", // red-400 with 20% opacity
+                    strokeDasharray: `${6 / viewTransform.scale},${4 / viewTransform.scale}`,
+                    vectorEffect: "non-scaling-stroke",
+                  };
+
+                  return (
+                    <svg
+                      className="absolute pointer-events-none overflow-visible"
+                      style={{
+                        left: screenRect.left,
+                        top: screenRect.top,
+                        width: screenRect.width,
+                        height: screenRect.height,
+                      }}
+                    >
+                      {normalized.shape === 'ellipse' && (
+                        <ellipse
+                          cx={screenRect.width / 2} cy={screenRect.height / 2}
+                          rx={screenRect.width / 2} ry={screenRect.height / 2}
+                          {...svgProps}
+                        />
+                      )}
+                      {normalized.shape === 'cloud' && (
+                        <path
+                          d={generateCloudPath(screenRect.width, screenRect.height)}
+                          {...svgProps}
+                          transform={`translate(${screenRect.width/2 - screenRect.width/2}, ${screenRect.height/2 - screenRect.height/2})`}
+                        />
+                      )}
+                    </svg>
+                  );
+                })()}
+
                 {marqueeScreenRect && (
                   <div className="absolute border-2 border-dashed border-blue-400 bg-blue-400/20 pointer-events-none" style={marqueeScreenRect} />
                 )}
@@ -1226,7 +1336,7 @@ const App: React.FC = () => {
       </main>
 
       {/* Item Hover Popup */}
-      {hoveredItem && (() => {
+      {hoveredItem && !draggingPinId && (() => {
         let content = null;
     
         switch (hoveredItem.type) {
@@ -1433,16 +1543,36 @@ const App: React.FC = () => {
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{safetyTargetPinId ? 'Edit' : 'Create'} Safety Issue</h2>
                   <button onClick={handleSafetyPanelCancel} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"><XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" /></button>
               </div>
-              <form onSubmit={handleSafetySubmit} className="flex flex-col flex-grow">
+              <form onSubmit={handleSafetySubmit} className="flex flex-col flex-grow overflow-y-auto -mr-6 pr-6">
                   <div className="mb-4">
                       <label htmlFor="safety-title" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Title</label>
                       <input type="text" name="title" id="safety-title" value={safetyFormData.title} onChange={handleSafetyFormChange} required className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white" />
+                  </div>
+                  <div className="mb-4">
+                        <label htmlFor="safety-description" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Description</label>
+                        <textarea name="description" id="safety-description" value={safetyFormData.description} onChange={handleSafetyFormChange} rows={4} className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white resize-none" />
                   </div>
                   <div className="mb-4">
                       <label htmlFor="safety-severity" className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Severity</label>
                       <select name="severity" id="safety-severity" value={safetyFormData.severity} onChange={handleSafetyFormChange} className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 text-gray-900 dark:text-white">
                           <option>Low</option><option>Medium</option><option>High</option>
                       </select>
+                  </div>
+                  <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Attachments</label>
+                      <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-md">
+                          <div className="space-y-1 text-center">
+                              <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>
+                              <div className="flex text-sm text-gray-600 dark:text-gray-400">
+                                  <label htmlFor="file-upload" className="relative cursor-pointer bg-white dark:bg-gray-800 rounded-md font-medium text-cyan-600 dark:text-cyan-500 hover:text-cyan-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-cyan-500">
+                                      <span>Upload a file</span>
+                                      <input id="file-upload" name="file-upload" type="file" className="sr-only" />
+                                  </label>
+                                  <p className="pl-1">or drag and drop</p>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                          </div>
+                      </div>
                   </div>
                   <div className="mt-auto flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                       <button type="button" onClick={handleSafetyPanelCancel} className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg">Cancel</button>

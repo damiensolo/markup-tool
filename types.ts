@@ -68,6 +68,7 @@ export interface PhotoData {
  */
 export interface Rectangle {
   id: string;
+  shape: 'box' | 'cloud' | 'ellipse';
   x: number;
   y: number;
   width: number;
@@ -85,6 +86,7 @@ export interface Rectangle {
 export interface SafetyIssueData {
   id: string;
   title: string;
+  description: string;
   status: 'Open' | 'In Progress' | 'Closed';
   severity: 'Low' | 'Medium' | 'High';
 }
